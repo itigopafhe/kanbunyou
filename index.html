@@ -268,8 +268,7 @@
             }
             if (target.classList.contains('toggle-visibility')) { const fieldEl = target.closest('.field'); if (fieldEl) { const contentEl = fieldEl.querySelector('.content'); if (contentEl) contentEl.classList.toggle('hidden'); } }
         });
-        loadFromURL = () => { if (!location.hash.startsWith("#data=")) return; const compressedString = location.hash.substring(6); try { const jsonString = LZString.decompressFromEncodedURIComponent(compressedString); const data = JSON.parse(jsonString); if (data.goku) { if (confirm("共有データを読込？")) { gokuData = data.goku; saveAndRender(); alert("完了"); }} } catch (error) { console.error("URL", error); alert("無効リンク"); } finally { history.replaceState(null, null, ' '); } };
-        XLSX.utils.book_new_append_json = (data, sheetName="Sheet1") => { const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, sheetName); return wb; };
+            XLSX.utils.book_new_append_json = (data, sheetName="Sheet1") => { const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, sheetName); return wb; };
         
         loadData(); loadFromURL(); switchView(activeTab);
     });
