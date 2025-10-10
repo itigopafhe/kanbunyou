@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>わたしの高機能 漢文アプリ</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    <style>
+        :root{--primary-color:#593c1b;--secondary-color:#0067C0;--danger-color:#c0392b;--bg-color:#f4f1e9;--card-bg-color:#fff;--text-color:#333;--base-padding:15px}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Kaku Gothic ProN',Meiryo,sans-serif;background-color:var(--bg-color);color:var(--text-color);margin:0;padding:var(--base-padding);box-sizing:border-box}
+        .header h1{color:var(--primary-color);margin:0;font-size:22px;text-align:center;padding-bottom:15px}
+        .tab-nav{display:flex;border-bottom:2px solid #ddd;margin-bottom:20px}.tab-btn{padding:10px 20px;border:none;background-color:transparent;font-size:16px;cursor:pointer;color:#888;border-bottom:3px solid transparent;margin-bottom:-2px}.tab-btn.active{color:var(--secondary-color);border-bottom-color:var(--secondary-color);font-weight:700}
+        .view{display:none}.view.active{display:block}
+        
+        .main-controls{margin-bottom:15px;display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;justify-content:center}
+        .sub-controls { padding: 15px; margin-bottom:15px; border-radius: 8px; background-color: rgba(0,0,0,0.03); border: 1px solid #e0e0e0; }
+        .sub-controls h3 { font-size: 16px; margin: 0 0 10px 0; color: var(--primary-color); }
+        .sub-controls .btn-group { display: flex; flex-wrap: wrap; gap: 10px; }
+        .sub-controls .btn { font-size: 13px; padding: 6px 12px; background-color: #777; }
+        
+        .btn{padding:10px 15px;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;font-weight:700;transition:background-color .2s}
+        .btn:hover{opacity:.9}
+        #add-group-btn, #add-goku-btn { background-color: var(--secondary-color); flex-grow: 1; }
+        .search-box{flex-grow:1;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box}
+        .status-bar{text-align:left;margin:15px 0 10px;font-size:14px;color:#555}
+        
+        .kuhou-group { background-color: #fff; border: 1px solid #e0e0e0; border-radius: 12px; margin-bottom: 20px; }
+        .kuhou-group-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 15px; border-bottom: 1px solid #e0e0e0; flex-wrap: wrap; gap: 10px;}
+        .kuhou-group-title { font-size: 20px; font-weight: bold; }
+        .subgroup-container { padding: 5px 15px 15px; }
+        .subgroup { border: 1px solid #eee; border-radius: 8px; margin-top: 15px; }
+        .subgroup > details > summary { list-style: none; }
+        .subgroup > details > summary::-webkit-details-marker { display: none; }
+        .subgroup-header { display: flex; align-items: center; justify-content: space-between; padding: 12px; background-color: #f9f9f9; flex-wrap: wrap; gap: 10px; cursor: pointer; }
+        .subgroup-title { font-size: 18px; font-weight: bold; color: var(--secondary-color); }
+        
+        .item-card-container { padding: 15px; }
+        .item-card{background-color:var(--card-bg-color);border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,.08);padding:20px;display:flex;flex-direction:column;position:relative}
+        .item-card h3 { margin:0 0 15px 0; font-size: 22px; }
+        
+        .field{border-left:3px solid #eee;padding-left:15px;margin-bottom:15px}.field-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}.field-title{font-size:12px;color:#888;font-weight:700}.toggle-visibility{cursor:pointer;font-size:18px;user-select:none}.field .content{line-height:1.6;white-space:pre-wrap;}
+        
+        .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+        .actions button { background: none; border: 1px solid #ccc; color:#555; border-radius:5px; font-size: 14px; cursor: pointer; padding: 5px 8px; font-weight:normal;}
+        .actions button:hover { background-color: #eee; }
+        .actions .reorder-btn { font-size: 16px; padding: 2px 8px; }
+        .card-actions{margin-top:auto;padding-top:15px;text-align:right;border-top:1px solid #f0f0f0;display:flex;gap:8px;justify-content:flex-end;}.card-actions button{background:0 0;border:1px solid #ccc;border-radius:5px;padding:5px 10px;cursor:pointer;font-size:12px;}.card-actions button:hover{background-color:#eee}
+        .delete-btn{border-color:var(--danger-color);color:var(--danger-color)}.delete-btn:hover{background-color:var(--danger-color);color:#fff}
+        
+        .hidden { display: none !important; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; background-color: #ccc !important; }
+
+        .card-tags { padding-top: 15px; border-top: 1px solid #f0f0f0; }
+        .card-tag { display: inline-block; background-color: #eee; color: #555; padding: 3px 8px; font-size: 12px; border-radius: 10px; margin-right: 5px; margin-bottom: 5px; }
+        
+        .details-section { margin-top: 15px; }
+        .details-section summary { cursor: pointer; font-weight: bold; color: var(--secondary-color); padding: 8px 0; border-top: 1px solid #f0f0f0; }
+        .details-section .details-content { padding-top: 10px; }
+        .details-section .details-content p { margin: 0 0 15px; line-height: 1.6; }
+        .details-section .details-content p strong { display: block; margin-bottom: 5px; font-size: 13px; color: var(--primary-color); border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .details-photo { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+
+        .goku-entry { border-top: 1px dashed #ccc; padding-top: 15px; margin-top: 15px; }
+        .goku-entry:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+        .goku-entry-header { font-weight: bold; font-size: 1.1em; }
+        .goku-entry-pos { font-size: 0.9em; color: #666; margin-left: 8px; }
+        .goku-entry-meanings { list-style-type: decimal; padding-left: 20px; }
+
+        #modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background-color:rgba(0,0,0,.6);z-index:1000}
+        #modal-container{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background-color:var(--bg-color);padding:25px;border-radius:12px;box-shadow:0 5px 25px rgba(0,0,0,.2);z-index:1001;width:90%;max-width:600px;max-height:85vh;display:flex;flex-direction:column}
+        #modal-container h2{margin-top:0;color:var(--primary-color)}
+        .modal-content{overflow-y:auto;flex-grow:1}
+        .modal-content form{display:flex;flex-direction:column;gap:15px}
+        .modal-content label{font-weight:700;font-size:14px;color:var(--primary-color);margin-bottom:-10px}
+        .modal-content fieldset { border: 1px solid #ccc; border-radius: 8px; padding: 10px 15px; margin-top: 10px; }
+        .modal-content legend { font-weight: bold; padding: 0 5px; }
+        .modal-content input[type=text],.modal-content textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box}
+        .modal-content textarea{min-height:80px;resize:vertical}
+        #photo-preview { max-width: 150px; max-height: 150px; margin-top: 10px; border: 1px solid #ccc; background: #fff; padding: 5px; border-radius: 4px; }
+        
+        .modal-actions{display:flex;align-items:center;gap:10px;margin-top:25px;flex-shrink:0}
+        .modal-actions .left-action { margin-right: auto; }
+        .modal-actions .btn { color: #fff !important; }
+        .modal-actions .btn-save{ background-color: var(--secondary-color); }
+        .modal-actions .btn-cancel{ background-color: #888; }
+        .modal-actions .btn-sub-action { background-color: #6c757d; }
+    
+        :root { --tag-filter-text-color: #0067C0; --tag-filter-bg-color: #ffffff; --tag-filter-border-color: #0067C0; --tag-filter-active-text-color: #ffffff; --tag-filter-active-bg-color: #0067C0; }
+        .tag-filter-system-container { width: 100%; text-align: left; padding: 10px 0; border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; margin-bottom: 20px;}
+        .tag-filter-btn { background-color: var(--tag-filter-bg-color); color: var(--tag-filter-text-color); border: 1px solid var(--tag-filter-border-color); border-radius: 15px; padding: 6px 14px; margin: 5px; cursor: pointer; transition: all 0.2s ease; font-size: 14px; font-weight: bold; }
+        .tag-filter-btn:hover { opacity: 0.8; }
+        .tag-filter-btn.active { background-color: var(--tag-filter-active-bg-color); color: var(--tag-filter-active-text-color); border-color: var(--tag-filter-active-bg-color); }
+    </style>
+</head>
+<body>
+    <header class="header"><h1>わたしの高機能 漢文アプリ</h1></header>
+    <nav class="tab-nav">
+        <button class="tab-btn active" data-tab="kuhou-list">句法一覧</button>
+        <button class="tab-btn" data-tab="training">句法トレーニング</button>
+        <button class="tab-btn" data-tab="goku-list">語句帳</button>
+    </nav>
+    <main>
+        <div id="kuhou-list-view" class="view active">
+            <div class="main-controls"><input type="search" id="kuhou-search-box" class="search-box" placeholder="グループ、句法、例文、解説などで検索..."><button id="add-group-btn" class="btn">＋ 新規グループを追加</button></div>
+            <div class="sub-controls"><<h3>句法データ管理</h3><div class="btn-group"><button class="btn kuhou-action" data-action="import">インポート</button><button class="btn kuhou-action" data-action="export-excel">Excelエクスポート</button><button class="btn kuhou-action" data-action="download-template">Excel雛形DL</button></div></div>
+            <div id="kuhou-tag-filter-container"></div>
+            <div class="status-bar"><span>★ </span><span id="kuhou-count-display"></span></div>
+            <div id="kuhou-container"></div>
+        </div>
+        <div id="training-view" class="view"><div style="text-align: center; padding: 40px; background: #fff; border-radius: 12px;"><h2>句法トレーニング（準備中）</h2><p>今後、ここにインタラクティブなトレーニング機能が追加されます。</p></div></div>
+        <div id="goku-list-view" class="view">
+             <div class="main-controls"><input type="search" id="goku-search-box" class="search-box" placeholder="語句、読み、意味、例文などで検索..."><button id="add-goku-btn" class="btn">＋ 新規語句を追加</button></div>
+             <div class="sub-controls"><<h3>語句データ管理</h3><div class="btn-group"><button class="btn goku-action" data-action="import">インポート</button><button class="btn goku-action" data-action="export-excel">Excelエクスポート</button><button class="btn goku-action" data-action="download-template">Excel雛形DL</button><button class="btn goku-action" data-action="share" style="background-color: #17a2b8;">共有リンク作成</button></div></div>
+            <div id="goku-tag-filter-container"></div>
+            <div class="status-bar"><span>★ </span><span id="goku-count-display"></span></div>
+            <div id="goku-container" class="item-container" style="display: grid; gap: 15px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));"></div>
+        </div>
+    </main>
+    <div id="modal-overlay" class="hidden"></div>
+    <div id="modal-container" class="hidden"></div>
+    <input type="file" id="import-file-input" class="hidden" accept=".xlsx, .csv">
+    <script>
+    // ===== ユーティリティ関数 =====
+    const sanitizeHTML = (str) => { if (!str) return ''; const temp = document.createElement('div'); temp.textContent = str; return temp.innerHTML; };
+    XLSX.utils.book_new_append_json = (data, sheetName="Sheet1") => { const wb = XLSX.utils.book_new(); const ws = XLSX.utils.json_to_sheet(data); XLSX.utils.book_append_sheet(wb, ws, sheetName); return wb; };
+
+    class TagFilter {
+        constructor(containerId, items, onFilterChange) { this.container = document.getElementById(containerId); if (!this.container) { return; } this.container.className = 'tag-filter-system-container'; this.allItems = items; this.onFilterChange = onFilterChange; this.activeTags = []; }
+        _extractAllTags() { return [...new Set(this.allItems.flatMap(item => item.tags || []))].sort((a, b) => a.localeCompare(b, 'ja')); }
+        _handleTagClick(tag) { if (tag === 'all') { this.activeTags = []; } else { const index = this.activeTags.indexOf(tag); if (index > -1) { this.activeTags.splice(index, 1); } else { this.activeTags.push(tag); } } this.render(); if (typeof this.onFilterChange === 'function') { this.onFilterChange(this.activeTags); } }
+        render() { this.container.innerHTML = ''; const allTags = this._extractAllTags(); if (allTags.length === 0) {this.container.style.display = 'none'; return;} this.container.style.display = 'block'; const allBtn = document.createElement('button'); allBtn.className = 'tag-filter-btn'; allBtn.textContent = 'すべて表示'; if (this.activeTags.length === 0) { allBtn.classList.add('active'); } allBtn.addEventListener('click', () => this._handleTagClick('all')); this.container.appendChild(allBtn); allTags.forEach(tag => { const btn = document.createElement('button'); btn.className = 'tag-filter-btn'; btn.textContent = tag; if (this.activeTags.includes(tag)) { btn.classList.add('active'); } btn.addEventListener('click', () => this._handleTagClick(tag)); this.container.appendChild(btn); }); }
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+        let kuhouData = [], gokuData = [], activeTab = 'kuhou-list', kuhouSearchQuery = '', gokuSearchQuery = '', activeKuhouTags = [], activeGokuTags = [], currentModalSaveHandler = null, currentImportHandler = null;
+        const modalOverlay = document.getElementById('modal-overlay'), modalContainer = document.getElementById('modal-container'), importFileInput = document.getElementById('import-file-input');
+        const kuhouSearchBox = document.getElementById('kuhou-search-box'), gokuSearchBox = document.getElementById('goku-search-box');
+        
+        const getDefaultKuhouData = () => [ { groupId: 1, groupTitle: "否定形", subgroups: [ { subgroupId: 101, subgroupTitle: "不", tags: ["基本", "否定"], card: { hakubun: "学而不思則罔。", kakikudashi: "学びて思はざれば則ち罔し。", translation: "学んでも考えなければ、身につかない。", explanation: "単純な打ち消し。「〜ず」と読む。" }}, { subgroupId: 102, subgroupTitle: "非", tags: ["否定"], card: { hakubun: "子非我。", kakikudashi: "子は我にあらず。", translation: "あなたは私ではない。", explanation: "名詞を打ち消す。「〜にあらず」と読む。" }} ]}, { groupId: 2, groupTitle: "使役形", subgroups: [ { subgroupId: 201, subgroupTitle: "使", tags: ["使役"], card: { hakubun: "王使人問之。", kakikudashi: "王人をして之を問はしむ。", translation: "王が家来にこれを質問させた。", explanation: "「AをしてBしむ」と読む。" }} ]} ];
+        const getDefaultGokuData = () => [ { id: 1, title: '則', variants: ['即', '乃', '便'], tags: ["重要語", "接続詞"], commonMemo: '文脈によって使われる漢字が異なるが、意味のニュアンスも少しずつ違う。', entries: [{ reading: "すなはち", partOfSpeech: "接続詞", meanings: ["【則】前件が後件の理由・条件となる場合。「〜ならば」「〜の場合は」。", "【即】二つのものがイコールである、またはすぐに行動が移る場合。「まさに」「すぐに」。", "【乃】意外な結果や、前件を受けてようやく後件が起こる場合。「そこでようやく」「意外にも」。"]}]} ];
+
+        const loadData = () => {
+            try { const storedKuhou = localStorage.getItem('kanbunKuhou'); kuhouData = storedKuhou ? JSON.parse(storedKuhou) : getDefaultKuhouData();
+            } catch (e) { console.error("句法データの読み込みに失敗。データを初期化します。", e); kuhouData = getDefaultKuhouData(); }
+            try {
+                const storedGoku = localStorage.getItem('kanbunGoku'); let rawGokuData = storedGoku ? JSON.parse(storedGoku) : getDefaultGokuData();
+                gokuData = rawGokuData.map(item => { if (item.entries && Array.isArray(item.entries)) return item; return { id: item.id, title: item.title, tags: item.tags || [], commonMemo: item.memo || "", photo: item.photo || "", entries: [{ reading: item.reading || "", partOfSpeech: "", meanings: (item.meanings || []).map(m=>(typeof m === 'string' ? m : m.text)), example: item.example || {} }] }; });
+            } catch (e) { console.error("語句データの読み込みに失敗。データを初期化します。", e); gokuData = getDefaultGokuData(); }
+        };
+        const saveData = () => { localStorage.setItem('kanbunKuhou', JSON.stringify(kuhouData)); localStorage.setItem('kanbunGoku', JSON.stringify(gokuData)); };
+        const saveAndRender = () => { saveData(); render(); };
+        const switchView = (tabId) => { activeTab = tabId; document.querySelectorAll('.view').forEach(view => view.classList.toggle('active', view.id === `${tabId}-view`)); document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId)); render(); };
+        const render = () => { if (activeTab === 'kuhou-list') renderKuhouList(); if (activeTab === 'goku-list') renderGokuList(); };
+        
+        const renderKuhouList = () => {
+            const container = document.getElementById('kuhou-container');
+            const query = kuhouSearchQuery.toLowerCase();
+            const searchFilteredData = query ? kuhouData.map(group => ({ ...group, subgroups: group.subgroups.filter(sg => { const card = sg.card || {}; return (group.groupTitle||'').toLowerCase().includes(query) || (sg.subgroupTitle||'').toLowerCase().includes(query) || (sg.tags||[]).join(',').toLowerCase().includes(query) || (card.hakubun||'').toLowerCase().includes(query) || (card.kakikudashi||'').toLowerCase().includes(query) || (card.translation||'').toLowerCase().includes(query) || (card.explanation||'').toLowerCase().includes(query) || (card.memo||'').toLowerCase().includes(query) || (card.example?.hakubun||'').toLowerCase().includes(query) || (card.example?.kakikudashi||'').toLowerCase().includes(query) || (card.example?.translation||'').toLowerCase().includes(query); }) })).filter(group => group.subgroups.length > 0) : kuhouData;
+            const allSubgroupsForTagging = searchFilteredData.flatMap(g => g.subgroups);
+            const tagFilter = new TagFilter('kuhou-tag-filter-container', allSubgroupsForTagging, (newTags) => { activeKuhouTags = newTags; renderKuhouList(); });
+            tagFilter.activeTags = activeKuhouTags; tagFilter.render();
+            container.innerHTML = ''; let totalKuhouCount = 0;
+            searchFilteredData.forEach((group, groupIndex) => {
+                const filteredSubgroups = group.subgroups.filter(subgroup => activeKuhouTags.every(tag => (subgroup.tags || []).includes(tag)));
+                if (filteredSubgroups.length === 0 && query) return;
+                const groupEl = document.createElement('div'); groupEl.className = 'kuhou-group'; groupEl.dataset.groupId = group.groupId;
+                const subgroupsHTML = filteredSubgroups.map(subgroup => {
+                    totalKuhouCount++; const card = subgroup.card; const tagsHTML = (subgroup.tags || []).map(tag => `<span class="card-tag">${sanitizeHTML(tag)}</span>`).join('');
+                    const detailsHTML = (card.explanation || card.memo || card.example?.hakubun) ? `<details class="details-section"><summary>解説・例文・メモ</summary><div class="details-content">${card.explanation ? `<p><strong>解説</strong>${sanitizeHTML(card.explanation)}</p>` : ''}${card.example?.hakubun ? `<p><strong>例文</strong>${sanitizeHTML(card.example.hakubun)}<br>${sanitizeHTML(card.example.kakikudashi)}<br>${sanitizeHTML(card.example.translation)}<br>(${sanitizeHTML(card.example.source) || '出典不明'})</p>` : ''}${card.memo ? `<p><strong>メモ</strong>${sanitizeHTML(card.memo)}</p>` : ''}</div></details>` : '';
+                    return `<div class="subgroup" data-subgroup-id="${subgroup.subgroupId}"><details><summary class="subgroup-header"><span class="subgroup-title">${sanitizeHTML(subgroup.subgroupTitle)}</span><div class="actions"><button class="edit-subgroup-btn">編集</button><button class="delete-subgroup-btn delete-btn">削除</button></div></summary><div class="item-card-container"><div class="item-card"><div class="field"><div class="field-header"><span class="field-title">白文</span></div><div class="content">${sanitizeHTML(card.hakubun) || ''}</div></div><div class="field"><div class="field-header"><span class="field-title">書き下し文</span><span class="toggle-visibility" data-field="kakikudashi">👁️</span></div><div class="content kakikudashi hidden">${sanitizeHTML(card.kakikudashi) || ''}</div></div><div class="field"><div class="field-header"><span class="field-title">現代語訳</span><span class="toggle-visibility" data-field="translation">👁️</span></div><div class="content translation hidden">${sanitizeHTML(card.translation) || ''}</div></div>${detailsHTML}<div class="card-tags">${tagsHTML}</div></div></div></details></div>`;
+                }).join('');
+                if (filteredSubgroups.length === 0 && !query) { groupEl.innerHTML = `<div class="kuhou-group-header"><span class="kuhou-group-title">${sanitizeHTML(group.groupTitle)}</span><div class="actions"><button class="add-subgroup-btn">＋ 句法追加</button><button class="edit-group-btn">編集</button><button class="delete-group-btn delete-btn">削除</button><button class="reorder-group-up-btn reorder-btn" ${groupIndex === 0 ? 'disabled' : ''}>🔼</button><button class="reorder-group-down-btn reorder-btn" ${groupIndex === kuhouData.length - 1 ? 'disabled' : ''}>🔽</button></div></div><div class="subgroup-container" style="padding:15px; color:#888;">句法がありません。</div>`; }
+                else { groupEl.innerHTML = `<div class="kuhou-group-header"><span class="kuhou-group-title">${sanitizeHTML(group.groupTitle)}</span><div class="actions"><button class="add-subgroup-btn">＋ 句法追加</button><button class="edit-group-btn">編集</button><button class="delete-group-btn delete-btn">削除</button><button class="reorder-group-up-btn reorder-btn" ${groupIndex === 0 ? 'disabled' : ''}>🔼</button><button class="reorder-group-down-btn reorder-btn" ${groupIndex === kuhouData.length - 1 ? 'disabled' : ''}>🔽</button></div></div><div class="subgroup-container">${subgroupsHTML}</div>`; }
+                container.appendChild(groupEl);
+            });
+            document.getElementById('kuhou-count-display').textContent = `${totalKuhouCount}件表示中`;
+        };
+        const renderGokuList = () => {
+            const container = document.getElementById('goku-container'); const query = gokuSearchQuery.toLowerCase();
+            const searchFilteredGoku = query ? gokuData.filter(item => { return (item.title||'').toLowerCase().includes(query) || (item.variants||[]).some(v => v.toLowerCase().includes(query)) || (item.tags||[]).join(',').toLowerCase().includes(query) || (item.commonMemo||'').toLowerCase().includes(query) || (item.entries||[]).some(entry => (entry.reading||'').toLowerCase().includes(query) || (entry.partOfSpeech||'').toLowerCase().includes(query) || (entry.meanings||[]).join(',').toLowerCase().includes(query) || (entry.example?.hakubun||'').toLowerCase().includes(query) || (entry.example?.kakikudashi||'').toLowerCase().includes(query) || (entry.example?.translation||'').toLowerCase().includes(query))}) : gokuData;
+            const tagFilter = new TagFilter('goku-tag-filter-container', searchFilteredGoku, (newTags) => { activeGokuTags = newTags; renderGokuList(); });
+            tagFilter.activeTags = activeGokuTags; tagFilter.render();
+            const filteredGoku = searchFilteredGoku.filter(item => activeGokuTags.every(tag => (item.tags || []).includes(tag)));
+            container.innerHTML = '';
+            filteredGoku.forEach(item => {
+                const card = document.createElement('div'); card.className = 'item-card goku-card'; card.dataset.gokuId = item.id;
+                const displayTitle = [item.title, ...(item.variants || [])].map(sanitizeHTML).join('・');
+                const tagsHTML = (item.tags || []).map(tag => `<span class="card-tag">${sanitizeHTML(tag)}</span>`).join('');
+                const entriesHTML = (item.entries || []).map(entry => { const sanitizedMeanings = (entry.meanings || []).map(m => `<li>${sanitizeHTML(m)}</li>`).join(''); const exHTML = entry.example?.hakubun ? `<details class="details-section" style="margin-top:0; font-size:0.9em;"><summary>例文</summary><div class="details-content"><p>${sanitizeHTML(entry.example.hakubun)}<br>${sanitizeHTML(entry.example.kakikudashi)}<br>${sanitizeHTML(entry.example.translation)}</p></div></details>` : ''; return `<div class="goku-entry"><div class="goku-entry-header"><span>${sanitizeHTML(entry.reading) || '読み未設定'}</span><span class="goku-entry-pos">${sanitizeHTML(entry.partOfSpeech) || ''}</span></div><ol class="goku-entry-meanings">${sanitizedMeanings}</ol>${exHTML}</div>`}).join('');
+                const commonDetailsHTML = (item.commonMemo || item.photo) ? `<details class="details-section"><summary>共通メモ・写真</summary><div class="details-content">${item.commonMemo ? `<p><strong>メモ</strong>${sanitizeHTML(item.commonMemo)}</p>` : ''}${item.photo ? `<p><strong>写真</strong><img src="${item.photo}" alt="関連写真" class="details-photo"></p>`: ''}</div></details>` : '';
+                card.innerHTML = `<h3>${displayTitle}</h3>${entriesHTML}<div class="card-tags" style="margin-top:15px;">${tagsHTML}</div>${commonDetailsHTML}<div class="card-actions"><button class="edit-goku-btn">編集</button><button class="delete-goku-btn delete-btn">削除</button></div>`;
+                container.appendChild(card);
+            });
+            document.getElementById('goku-count-display').textContent = `${filteredGoku.length}件表示中 / 全${gokuData.length}件`;
+        };
+        const downloadTemplate = (type) => { let data, fileName; if (type === 'kuhou') { data = [{"グループ名":"例:否定形","句法名":"不","タグ":"基本,否定","白文":"過而不改","書き下し文":"過ちて改めざる","現代語訳":"過ちを犯しても改めない","解説":"単純な打ち消し","メモ":"基本","例文_白文":"君子不器","例文_書き下し":"君子は器ならず","例文_現代語訳":"君子は特定の用途の人間ではない","例文_出典":"論語"}]; fileName = "句法テンプレート.xlsx"; } else { data = [{"語句":"則","異体字・類義字":"即,乃,便","読み":"すなはち","品詞":"接続詞","意味":"【則】〜の場合は\n【即】すぐに","タグ":"重要語","共通メモ":"文脈で判断","写真URL":"","例文_白文":"","例文_書き下し":"","例文_現代語訳":""}]; fileName = "語句テンプレート.xlsx"; } XLSX.writeFile(XLSX.utils.book_new_append_json(data, type === 'kuhou' ? '句法一覧' : '語句帳'), fileName); };
+        const exportData = (type) => { let data; if (type === 'kuhou') { data = kuhouData.flatMap(g => g.subgroups.map(sg => ({ "グループ名": g.groupTitle, "句法名": sg.subgroupTitle, "タグ": (sg.tags||[]).join(','), "白文": sg.card.hakubun, "書き下し文": sg.card.kakikudashi, "現代語訳": sg.card.translation, "解説": sg.card.explanation, "メモ": sg.card.memo, "例文_白文": sg.card.example?.hakubun, "例文_書き下し": sg.card.example?.kakikudashi, "例文_現代語訳": sg.card.example?.translation, "例文_出典": sg.card.example?.source }))); } else { data = gokuData.flatMap(item => (item.entries||[]).map(entry => ({ "語句": item.title, "異体字・類義字": (item.variants||[]).join(','), "読み": entry.reading, "品詞": entry.partOfSpeech, "意味": (entry.meanings||[]).join('\n'), "タグ": (item.tags||[]).join(','), "共通メモ": item.commonMemo, "写真URL": item.photo, "例文_白文": entry.example?.hakubun, "例文_書き下し": entry.example?.kakikudashi, "例文_現代語訳": entry.example?.translation, })) );} if(data.length === 0) { alert("データ無"); return; } XLSX.writeFile(XLSX.utils.book_new_append_json(data, type === 'kuhou' ? "句法一覧" : "語句帳"), type === 'kuhou' ? "句法データ.xlsx" : "語句データ.xlsx"); };
+        const handleKuhouImport = (json) => { const newKuhouData = []; const groupMap = new Map(); json.forEach(row => { const groupTitle = row["グループ名"] || "名称未設定"; if (!groupMap.has(groupTitle)) { groupMap.set(groupTitle, { groupId: Date.now() + Math.random(), groupTitle: groupTitle, subgroups: [] });} const group = groupMap.get(groupTitle); group.subgroups.push({ subgroupId: Date.now() + Math.random(), subgroupTitle: row["句法名"] || "名称未設定", tags: (row["タグ"] || "").split(',').map(t=>t.trim()).filter(Boolean), card: { hakubun: row["白文"] || "", kakikudashi: row["書き下し文"] || "", translation: row["現代語訳"] || "", explanation: row["解説"] || "", memo: row["メモ"] || "", example: { hakubun: row["例文_白文"], kakikudashi: row["例文_書き下し"], translation: row["例文_現代語訳"], source: row["例文_出典"] } } }); }); newKuhouData.push(...groupMap.values()); kuhouData = newKuhouData; };
+        const handleGokuImport = (json) => { const gokuMap = new Map(); json.forEach(row => { const title = row["語句"] || "名称未設定"; if (!gokuMap.has(title)) { gokuMap.set(title, { id: Date.now() + Math.random(), title: title, variants: (row["異体字・類義字"] || "").split(',').map(t=>t.trim()).filter(Boolean), entries: [], tags: (row["タグ"] || "").split(',').map(t=>t.trim()).filter(Boolean), commonMemo: row["共通メモ"] || "", photo: row["写真URL"] || "" }); } const item = gokuMap.get(title); if(row["読み"] || row["意味"]){ item.entries.push({ reading: row["読み"] || "", partOfSpeech: row["品詞"] || "", meanings: (row["意味"] || "").split('\n').filter(Boolean), example: { hakubun: row["例文_白文"], kakikudashi: row["例文_書き下し"], translation: row["例文_現代語訳"] } }); } }); gokuData = [...gokuMap.values()]; };
+        const handleFileImport = (e) => { const file = e.target.files[0]; if (!file || !currentImportHandler) return; const reader = new FileReader(); reader.onload = (event) => { try { const data = new Uint8Array(event.target.result); const workbook = XLSX.read(data, {type: 'array'}); const sheetName = workbook.SheetNames[0]; const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]); if (json.length === 0) { alert("データ無"); return; } if (!confirm("上書きしますか？")) return; currentImportHandler(json); saveAndRender(); alert("完了"); } catch (error) { console.error(error); alert("失敗"); } finally { importFileInput.value = ''; currentImportHandler = null; } }; reader.readAsArrayBuffer(file); };
+        const createShareLink = () => { if (gokuData.length === 0) { alert("共有データ無"); return; } const dataToShare = { goku: gokuData }; const jsonString = JSON.stringify(dataToShare); const compressedString = LZString.compressToEncodedURIComponent(jsonString); const url = `${location.protocol}//${location.host}${location.pathname}#data=${compressedString}`; navigator.clipboard.writeText(url).then(() => alert("リンクをコピーしました"), () => alert("コピー失敗")); };
+        const loadFromURL = () => { if (!location.hash.startsWith("#data=")) return; const compressedString = location.hash.substring(6); try { const jsonString = LZString.decompressFromEncodedURIComponent(compressedString); const data = JSON.parse(jsonString); if (data.goku) { if (confirm("共有データを読込？")) { gokuData = data.goku; saveAndRender(); alert("完了"); }} } catch (error) { console.error("URL", error); alert("無効リンク"); } finally { history.replaceState(null, null, ' '); } };
+        const showModal = (title, content, onSave, footerContent = '') => { const leftActionHTML = footerContent ? `<div class="left-action">${footerContent}</div>` : ''; modalContainer.innerHTML = `<h2>${sanitizeHTML(title)}</h2><div class="modal-content">${content}</div><div class="modal-actions">${leftActionHTML}<button id="modal-cancel-btn" class="btn btn-cancel">キャンセル</button><button id="modal-save-btn" class="btn btn-save">保存</button></div>`; modalOverlay.classList.remove('hidden'); modalContainer.classList.remove('hidden'); currentModalSaveHandler = onSave; };
+        const hideModal = () => { modalOverlay.classList.add('hidden'); modalContainer.classList.add('hidden'); modalContainer.innerHTML = ''; currentModalSaveHandler = null; };
+        const openGroupForm = (group = null) => { const isEdit = group !== null; const title = isEdit ? 'グループを編集' : '新規グループを追加'; const formHTML = `<form id="group-form-modal"><label>グループ名</label><input type="text" id="group-title" value="${isEdit ? sanitizeHTML(group.groupTitle) : ''}" required></form>`; showModal(title, formHTML, () => { const newTitle = document.getElementById('group-title').value.trim(); if (newTitle) { if (isEdit) { group.groupTitle = newTitle; } else { kuhouData.push({ groupId: Date.now(), groupTitle: newTitle, subgroups: [] }); } saveAndRender(); hideModal(); } }); };
+        const openSubgroupForm = (group, subgroup = null) => {
+            const isEdit = subgroup !== null; const card = isEdit ? subgroup.card : {}; const tags = isEdit ? (subgroup.tags || []).join(', ') : ''; const title = isEdit ? '句法を編集' : '新規句法を追加'; const ex = card.example || {};
+            const formHTML = `<form id="subgroup-form-modal"><label>句法名</label><input type="text" id="subgroup-title" value="${isEdit ? sanitizeHTML(subgroup.subgroupTitle) : ''}" required><label>タグ(カンマ区切り)</label><input type="text" id="tags" value="${sanitizeHTML(tags)}"><label>白文</label><textarea id="card-hakubun">${sanitizeHTML(card.hakubun || '')}</textarea><label>書き下し文</label><textarea id="card-kakikudashi">${sanitizeHTML(card.kakikudashi || '')}</textarea><label>現代語訳</label><textarea id="card-translation">${sanitizeHTML(card.translation || '')}</textarea><label>解説</label><textarea id="card-explanation">${sanitizeHTML(card.explanation || '')}</textarea><label>メモ</label><textarea id="card-memo">${sanitizeHTML(card.memo || '')}</textarea><fieldset><legend>例文</legend><label>白文</label><input type="text" class="ex-hakubun" value="${sanitizeHTML(ex.hakubun||'')}"><label>書き下し文</label><input type="text" class="ex-kakikudashi" value="${sanitizeHTML(ex.kakikudashi||'')}"><label>現代語訳</label><input type="text" class="ex-translation" value="${sanitizeHTML(ex.translation||'')}"><label>出典</label><input type="text" class="ex-source" value="${sanitizeHTML(ex.source||'')}"></fieldset></form>`;
+            showModal(title, formHTML, () => {
+                const form = document.getElementById('subgroup-form-modal'); const newSubgroupTitle = form.querySelector('#subgroup-title').value.trim(); if(!newSubgroupTitle) { alert('句法名は必須です。'); return; }
+                const newTags = form.querySelector('#tags').value.split(',').map(t => t.trim()).filter(Boolean);
+                const newCardData = { hakubun: form.querySelector('#card-hakubun').value, kakikudashi: form.querySelector('#card-kakikudashi').value, translation: form.querySelector('#card-translation').value, explanation: form.querySelector('#card-explanation').value, memo: form.querySelector('#card-memo').value, example: { hakubun: form.querySelector('.ex-hakubun').value, kakikudashi: form.querySelector('.ex-kakikudashi').value, translation: form.querySelector('.ex-translation').value, source: form.querySelector('.ex-source').value } };
+                if (isEdit) { subgroup.subgroupTitle = newSubgroupTitle; subgroup.tags = newTags; Object.assign(subgroup.card, newCardData); } 
+                else { group.subgroups.push({ subgroupId: Date.now(), subgroupTitle: newSubgroupTitle, tags: newTags, card: { cardId: Date.now()+1, ...newCardData } }); }
+                saveAndRender(); hideModal();
+            });
+        };
+        const processImageFile = (file) => new Promise((resolve, reject) => { const MAX_WIDTH = 800; const reader = new FileReader(); reader.onload = (e) => { const img = new Image(); img.onload = () => { let width = img.width, height = img.height; if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height); resolve(canvas.toDataURL('image/jpeg', 0.8)); }; img.onerror = reject; img.src = e.target.result; }; reader.onerror = reject; reader.readAsDataURL(file); });
+        const openGokuForm = (gokuItem = null) => {
+            const isEdit = gokuItem !== null; const title = isEdit ? '語句を編集' : '新規語句を追加';
+            let tempPhotoData = isEdit ? gokuItem.photo || '' : '';
+            const createEntryHTML = (entry = {}) => { const ex = entry.example || {}; return `<fieldset class="goku-entry-form"><legend>読み・意味セット</legend><button type="button" class="delete-entry-btn delete-btn" style="float:right;">削除</button><label>読み</label><input type="text" class="goku-reading" value="${sanitizeHTML(entry.reading || '')}"><label>品詞</label><input type="text" class="goku-pos" value="${sanitizeHTML(entry.partOfSpeech || '')}"><label>意味(改行で複数)</label><textarea class="goku-meanings">${sanitizeHTML((entry.meanings || []).join('\n'))}</textarea><fieldset><legend>例文</legend><label>白文</label><input type="text" class="ex-hakubun" value="${sanitizeHTML(ex.hakubun||'')}"><label>書き下し文</label><input type="text" class="ex-kakikudashi" value="${sanitizeHTML(ex.kakikudashi||'')}"><label>現代語訳</label><input type="text" class="ex-translation" value="${sanitizeHTML(ex.translation||'')}"></fieldset></fieldset>`; };
+            const entries = (isEdit && Array.isArray(gokuItem.entries) && gokuItem.entries.length > 0) ? gokuItem.entries : [{}];
+            const formHTML = `<form id="goku-form-modal"><label>語句（代表表記）</label><input type="text" id="goku-title" value="${isEdit ? sanitizeHTML(gokuItem.title) : ''}" required><label>異体字・類義字(カンマ区切り)</label><input type="text" id="goku-variants" value="${isEdit ? sanitizeHTML((gokuItem.variants || []).join(', ')) : ''}"><div id="goku-entries-container">${entries.map(createEntryHTML).join('')}</div><label>共通メモ</label><textarea id="goku-common-memo">${isEdit ? sanitizeHTML(gokuItem.commonMemo || '') : ''}</textarea><label>タグ(カンマ区切り)</label><input type="text" id="tags" value="${isEdit ? sanitizeHTML((gokuItem.tags || []).join(', ')) : ''}"><fieldset><legend>写真</legend><label for="goku-photo-file">ファイルから選択</label><input type="file" id="goku-photo-file" accept="image/*"><img id="photo-preview" class="${tempPhotoData ? '' : 'hidden'}" src="${tempPhotoData}"><label for="goku-photo-url">または URLを入力</label><input type="text" id="goku-photo-url" value="${tempPhotoData.startsWith('data:') ? '' : sanitizeHTML(tempPhotoData)}" placeholder="https://..."></fieldset></form>`;
+            showModal(title, formHTML, () => {
+                const form = document.getElementById('goku-form-modal');
+                const newTitle = form.querySelector('#goku-title').value.trim();
+                if (newTitle) {
+                    const finalPhotoData = form.querySelector('#goku-photo-url').value.trim() || tempPhotoData;
+                    const newVariants = form.querySelector('#goku-variants').value.split(',').map(t => t.trim()).filter(Boolean);
+                    const newEntries = [...form.querySelectorAll('.goku-entry-form')].map(fieldset => ({ reading: fieldset.querySelector('.goku-reading').value, partOfSpeech: fieldset.querySelector('.goku-pos').value, meanings: fieldset.querySelector('.goku-meanings').value.trim().split('\n').filter(Boolean), example: { hakubun: fieldset.querySelector('.ex-hakubun').value, kakikudashi: fieldset.querySelector('.ex-kakikudashi').value, translation: fieldset.querySelector('.ex-translation').value } }));
+                    if(newEntries.length === 0 || (newEntries.length === 1 && !newEntries[0].reading && newEntries[0].meanings.length === 0) ) { alert('「読み・意味セット」を最低一つは入力してください。'); return; }
+                    const newTags = form.querySelector('#tags').value.split(',').map(t => t.trim()).filter(Boolean); 
+                    const newCommonMemo = form.querySelector('#goku-common-memo').value;
+                    if (isEdit) { Object.assign(gokuItem, {title: newTitle, variants: newVariants, entries: newEntries, tags: newTags, commonMemo: newCommonMemo, photo: finalPhotoData }); } 
+                    else { gokuData.push({ id: Date.now(), title: newTitle, variants: newVariants, entries: newEntries, tags: newTags, commonMemo: newCommonMemo, photo: finalPhotoData }); }
+                    saveAndRender(); hideModal();
+                }
+            }, `<div class="left-action"><button type="button" id="add-entry-btn" class="btn btn-sub-action">＋ 読み・意味セットを追加</button></div>`);
+            
+            const gokuEntriesContainer = document.getElementById('goku-entries-container');
+            if (gokuEntriesContainer) {
+                gokuEntriesContainer.addEventListener('click', e => { if(e.target.classList.contains('delete-entry-btn')) { if (document.querySelectorAll('.goku-entry-form').length > 1) { e.target.closest('.goku-entry-form').remove(); } else { alert('最後のセットは削除できません。'); } } });
+            }
+            const addEntryBtn = document.getElementById('add-entry-btn');
+            if(addEntryBtn) { addEntryBtn.addEventListener('click', () => { gokuEntriesContainer.insertAdjacentHTML('beforeend', createEntryHTML()); }); }
+            const photoFile = document.getElementById('goku-photo-file');
+            if(photoFile){ photoFile.addEventListener('change', async (e) => { const file = e.target.files[0]; if (file) { try { const resizedDataUrl = await processImageFile(file); tempPhotoData = resizedDataUrl; document.getElementById('photo-preview').src = resizedDataUrl; document.getElementById('photo-preview').classList.remove('hidden'); document.getElementById('goku-photo-url').value = ''; } catch (err) { alert('画像の処理に失敗しました。'); } } }); }
+        };
+        
+        // --- イベントリスナー ---
+        document.addEventListener('click', (e) => {
+            const { target } = e;
+            if (target.closest('.modal-actions')) { if (target.id === 'modal-save-btn' && currentModalSaveHandler) { currentModalSaveHandler(); } if (target.id === 'modal-cancel-btn') { hideModal(); } return; }
+            if (target.id === 'modal-overlay') { hideModal(); return; }
+            if (target.closest('.subgroup > details > summary') && !target.closest('.actions')) { return; }
+            const kuhouAction = target.closest('.kuhou-action');
+            if (kuhouAction) { const action = kuhouAction.dataset.action; if (action === 'import') { currentImportHandler = handleKuhouImport; importFileInput.click(); } else if (action === 'export-excel') exportData('kuhou'); else if (action === 'download-template') downloadTemplate('kuhou'); return; }
+            const gokuAction = target.closest('.goku-action');
+            if (gokuAction) { const action = gokuAction.dataset.action; if (action === 'import') { currentImportHandler = handleGokuImport; importFileInput.click(); } else if (action === 'export-excel') exportData('goku'); else if (action === 'download-template') downloadTemplate('goku'); else if (action === 'share') createShareLink(); return; }
+            if (target.id === 'add-group-btn') { openGroupForm(); return; }
+            if (target.id === 'add-goku-btn') { openGokuForm(); return; }
+            const groupEl = target.closest('.kuhou-group');
+            if(groupEl){
+                const groupId = Number(groupEl.dataset.groupId); const group = kuhouData.find(g => g.groupId === groupId); if (!group) return;
+                const subgroupEl = target.closest('.subgroup');
+                if (subgroupEl) {
+                    const subgroupId = Number(subgroupEl.dataset.subgroupId); const subgroup = group.subgroups.find(sg => sg.subgroupId === subgroupId); if (!subgroup) return;
+                    if (target.classList.contains('edit-subgroup-btn')) { e.preventDefault(); openSubgroupForm(group, subgroup); } 
+                    else if (target.classList.contains('delete-subgroup-btn')) { e.preventDefault(); if (confirm(`句法「${sanitizeHTML(subgroup.subgroupTitle)}」を削除しますか？`)) { group.subgroups = group.subgroups.filter(sg => sg.subgroupId !== subgroupId); saveAndRender(); } }
+                } else {
+                    if (target.classList.contains('add-subgroup-btn')) { e.preventDefault(); openSubgroupForm(group); }
+                    else if (target.classList.contains('edit-group-btn')) { e.preventDefault(); openGroupForm(group); }
+                    else if (target.classList.contains('delete-group-btn')) { e.preventDefault(); if (confirm(`グループ「${sanitizeHTML(group.groupTitle)}」を削除しますか？`)) { kuhouData = kuhouData.filter(g => g.groupId !== groupId); saveAndRender(); } }
+                    else if (target.classList.contains('reorder-group-up-btn')) { e.preventDefault(); const i = kuhouData.indexOf(group); if (i > 0) { [kuhouData[i], kuhouData[i-1]] = [kuhouData[i-1], kuhouData[i]]; saveAndRender(); } }
+                    else if (target.classList.contains('reorder-group-down-btn')) { e.preventDefault(); const i = kuhouData.indexOf(group); if (i < kuhouData.length - 1) { [kuhouData[i], kuhouData[i+1]] = [kuhouData[i+1], kuhouData[i]]; saveAndRender(); } }
+                }
+                return;
+            }
+            const gokuCardEl = target.closest('.goku-card');
+            if (gokuCardEl) {
+                const gokuId = Number(gokuCardEl.dataset.gokuId); const gokuItem = gokuData.find(g => g.id === gokuId); if (!gokuItem) return;
+                if (target.classList.contains('edit-goku-btn')) { openGokuForm(gokuItem); }
+                else if (target.classList.contains('delete-goku-btn')) { if (confirm(`語句「${sanitizeHTML(gokuItem.title)}」を削除しますか？`)) { gokuData = gokuData.filter(g => g.id !== gokuId); saveAndRender(); } }
+                return;
+            }
+            if (target.classList.contains('toggle-visibility')) { const fieldEl = target.closest('.field'); if (fieldEl) { const contentEl = fieldEl.querySelector('.content'); if (contentEl) contentEl.classList.toggle('hidden'); } }
+        });
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.tab)));
+        kuhouSearchBox.addEventListener('input', (e) => { kuhouSearchQuery = e.target.value; render(); });
+        gokuSearchBox.addEventListener('input', (e) => { gokuSearchQuery = e.target.value; render(); });
+        importFileInput.addEventListener('change', handleFileImport);
+        loadData(); loadFromURL(); switchView(activeTab);
+    });
+    </script>
+</body>
+</html>
