@@ -82,9 +82,9 @@
         .tr-progress > div { height: 100%; background: var(--secondary-color); transition: width .2s; }
         .tr-question-meta { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
         .tr-question { font-size: 15px; color: var(--muted); margin-bottom: 8px; }
-        .tr-question-body { font-size: 22px; padding: 16px; background: #faf7ef; border-radius: 10px; margin-bottom: 16px; line-height: 1.5; word-break: break-word; }
+        .tr-question-body { font-size: 22px; padding: 16px; background: #faf7ef; border-radius: 10px; margin-bottom: 16px; line-height: 1.5; word-break: break-word; white-space: pre-line; }
         .tr-choices { display: flex; flex-direction: column; gap: 10px; }
-        .tr-choice { text-align: left; padding: 14px 16px; background: #fff; border: 1.5px solid var(--line); border-radius: 10px; font-size: 15px; color: var(--text-color); cursor: pointer; min-height: 48px; line-height: 1.5; }
+        .tr-choice { text-align: left; padding: 14px 16px; background: #fff; border: 1.5px solid var(--line); border-radius: 10px; font-size: 15px; color: var(--text-color); cursor: pointer; min-height: 48px; line-height: 1.5; white-space: pre-line; }
         .tr-choice:active { background: #f5f2ea; }
         .tr-choice.correct { background: #e5f5e5; border-color: #4caf50; color: #2e7d32; font-weight: 700; }
         .tr-choice.wrong { background: #fbe6e4; border-color: var(--danger-color); color: var(--danger-color); font-weight: 700; }
@@ -93,6 +93,8 @@
         .tr-explanation strong { color: var(--primary-color); display: block; margin-bottom: 4px; font-size: 12px; letter-spacing: .06em; }
         .tr-example-field { margin-bottom: 8px; }
         .tr-example-field > span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+        .tr-goku-meanings { margin: 4px 0 8px; padding-left: 20px; }
+        .tr-goku-example { margin-top: 8px; }
         .tr-used-kuhou-section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
         .tr-used-kuhou { margin-top: 8px; }
         .tr-next-btn { margin-top: 14px; width: 100%; padding: 14px; background: var(--secondary-color); font-size: 15px; }

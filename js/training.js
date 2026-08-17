@@ -1,17 +1,18 @@
         const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
         const recordSession = (total, correct) => { const t = todayStr(); const entry = studyHistory.find(h => h.date === t); if (entry) { entry.total += total; entry.correct += correct; } else { studyHistory.push({ date: t, total, correct }); } localStorage.setItem('kanbunHistory', JSON.stringify(studyHistory)); };
 
-        const trainingModes = { title2reading: '句法名 → 読み', title2meaning: '句法名 → 訳', hakubun2kakikudashi: '白文 → 書き下し', hakubun2translation: '白文 → 日本語訳', kakikudashi2translation: '書き下し → 日本語訳' };
+        const trainingModes = { title2reading: '句法名 → 読み', title2meaning: '句法名 → 訳', hakubun2kakikudashi: '白文 → 書き下し', hakubun2translation: '白文 → 日本語訳', kakikudashi2translation: '書き下し → 日本語訳', goku2reading: '語句 → 読み', goku2meaning: '語句 → 意味' };
         const kuhouTrainingModes = ['title2reading', 'title2meaning'];
         const exampleTrainingModes = ['hakubun2kakikudashi', 'hakubun2translation', 'kakikudashi2translation'];
-        const trainingState = { screen: 'start', settings: { modes: ['title2reading', 'title2meaning', 'kakikudashi2translation'], count: 10, tags: [], checkedOnly: false }, questions: [], idx: 0, correct: 0, answered: false, lastCorrect: false };
+        const gokuTrainingModes = ['goku2reading', 'goku2meaning'];
+        const trainingState = { screen: 'start', settings: { modes: ['title2reading', 'title2meaning', 'kakikudashi2translation'], count: 10, tags: [], gokuTags: [], checkedOnly: false }, questions: [], idx: 0, correct: 0, answered: false, lastCorrect: false };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
         const getAllSubgroups = () => kuhouData.flatMap(g => (g.subgroups || []).map(sg => ({ group: g, sg })));
         const getExampleUsedKuhouIds = (example, ownerSubgroup) => [...new Set([ownerSubgroup?.subgroupId, ...(Array.isArray(example?.usedKuhouIds) ? example.usedKuhouIds : [])].filter(id => id !== undefined && id !== null && id !== ''))];
         const getExampleUsedKuhou = (example, ownerSubgroup) => { const usedIds = new Set(getExampleUsedKuhouIds(example, ownerSubgroup).map(String)); return getAllSubgroups().filter(({ sg }) => usedIds.has(String(sg.subgroupId))); };
         const renderKuhouExplanation = (group, subgroup, index = null) => { const heading = index === null ? `${sanitizeHTML(group.groupTitle)} — ${sanitizeHTML(subgroup.subgroupTitle)}` : `${index}. ${sanitizeHTML(subgroup.subgroupTitle)}`; return `<div class="tr-used-kuhou"><strong>${heading}</strong>${subgroup.reading ? `<div>読み: ${sanitizeHTML(subgroup.reading)}</div>` : ''}${subgroup.meaning ? `<div>意味: ${sanitizeHTML(subgroup.meaning)}</div>` : ''}${subgroup.explanation ? `<div>解説: ${sanitizeHTML(subgroup.explanation)}</div>` : ''}</div>`; };
         const renderExampleExplanation = (question) => { const example = question.example || question.subgroup.examples?.[question.exIdx] || {}; const fields = [['白文', example.hakubun], ['書き下し', example.kakikudashi], ['現代語訳', example.translation]].filter(([, value]) => value); if (example.source) fields.push(['出典', example.source]); const usedKuhou = getExampleUsedKuhou(example, question.subgroup); return `<div class="tr-explanation tr-example-explanation">${fields.map(([label, value]) => `<div class="tr-example-field"><span>${label}</span><div>${sanitizeHTML(value)}</div></div>`).join('')}${usedKuhou.length ? `<div class="tr-used-kuhou-section"><div class="tr-used-kuhou-title">この例文で使われている句法</div>${usedKuhou.map(({ group, sg }, index) => renderKuhouExplanation(group, sg, index + 1)).join('')}</div>` : ''}</div>`; };
-        const buildQuestion = (mode, pool) => {
+        const buildKuhouQuestion = (mode, pool) => {
             const shuffled = shuffle(pool);
             const checkedOnly = trainingState.settings.checkedOnly;
             const questionType = exampleTrainingModes.includes(mode) ? 'example' : 'kuhou';
@@ -43,28 +44,95 @@
             }
             return null;
         };
+        const uniqueNonEmptyStrings = (values) => [...new Set((values || []).map(value => String(value || '').trim()).filter(Boolean))];
+        const getGokuReadingAnswer = (item) => uniqueNonEmptyStrings((item.entries || []).map(entry => entry.reading)).join('・');
+        const getGokuMeaningAnswer = (entry) => uniqueNonEmptyStrings(entry.meanings).map(meaning => `・${meaning}`).join('\n');
+        const isUnambiguousGokuMeaningEntry = (item, entryIndex) => {
+            const entries = item.entries || []; const entry = entries[entryIndex] || {}; const reading = String(entry.reading || '').trim();
+            if (!reading) return entries.length === 1;
+            const sameReading = entries.filter(other => String(other.reading || '').trim() === reading);
+            if (sameReading.length === 1) return true;
+            const partOfSpeech = String(entry.partOfSpeech || '').trim();
+            return Boolean(partOfSpeech) && sameReading.filter(other => String(other.partOfSpeech || '').trim() === partOfSpeech).length === 1;
+        };
+        const getGokuMeaningPrompt = (item, entry, entryIndex) => {
+            const sameReadingCount = (item.entries || []).filter(other => String(other.reading || '').trim() === String(entry.reading || '').trim()).length;
+            const prompt = [item.title];
+            if (entry.reading) prompt.push(`読み: ${entry.reading}`);
+            if (sameReadingCount > 1 && entry.partOfSpeech) prompt.push(`品詞: ${entry.partOfSpeech}`);
+            return prompt.join('\n');
+        };
+        const buildGokuQuestion = (mode, pool) => {
+            const shuffledItems = shuffle(pool);
+            if (mode === 'goku2reading') {
+                for (const item of shuffledItems) {
+                    const answer = getGokuReadingAnswer(item); if (!answer) continue;
+                    const distractors = []; const seen = new Set([answer]);
+                    for (const other of shuffledItems) {
+                        if (other === item) continue;
+                        const value = getGokuReadingAnswer(other);
+                        if (value && !seen.has(value)) { distractors.push(value); seen.add(value); if (distractors.length === 3) break; }
+                    }
+                    if (distractors.length === 3) return { questionType: 'goku', mode, prompt: item.title, answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex: null, gokuItem: item, entry: null };
+                }
+                return null;
+            }
+            const candidates = shuffle(shuffledItems.flatMap(item => (item.entries || []).map((entry, entryIndex) => ({ item, entry, entryIndex }))));
+            for (const candidate of candidates) {
+                const { item, entry, entryIndex } = candidate; const answer = getGokuMeaningAnswer(entry);
+                if (!answer || !isUnambiguousGokuMeaningEntry(item, entryIndex)) continue;
+                const distractors = []; const seen = new Set([answer]);
+                for (const other of candidates) {
+                    if (other.item === item && other.entryIndex === entryIndex) continue;
+                    const value = getGokuMeaningAnswer(other.entry);
+                    if (value && !seen.has(value)) { distractors.push(value); seen.add(value); if (distractors.length === 3) break; }
+                }
+                if (distractors.length === 3) return { questionType: 'goku', mode, prompt: getGokuMeaningPrompt(item, entry, entryIndex), answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex, gokuItem: item, entry };
+            }
+            return null;
+        };
+        const getQuestionKey = (question) => question.questionType === 'goku' ? `goku:${question.gokuId}:${question.entryIndex === null ? 'item' : question.entryIndex}:${question.mode}` : `kuhou:${question.subgroup.subgroupId}:${question.exIdx}:${question.mode}`;
         const buildQuestions = () => {
-            const { modes, count, tags } = trainingState.settings;
-            let pool = getAllSubgroups();
-            if (tags.length) pool = pool.filter(({ sg }) => tags.every(t => (sg.tags||[]).includes(t)));
-            const questions = [];
-            for (let i = 0; i < count; i++) {
-                const mode = modes[Math.floor(Math.random() * modes.length)];
-                const q = buildQuestion(mode, pool);
-                if (q) questions.push(q);
+            const { modes, count, tags, gokuTags, checkedOnly } = trainingState.settings;
+            let kuhouPool = getAllSubgroups();
+            if (tags.length) kuhouPool = kuhouPool.filter(({ sg }) => tags.every(t => (sg.tags||[]).includes(t)));
+            let gokuPool = gokuData.slice();
+            if (gokuTags.length) gokuPool = gokuPool.filter(item => gokuTags.every(t => (item.tags || []).includes(t)));
+            let activeModes = modes.filter(mode => !checkedOnly || !gokuTrainingModes.includes(mode));
+            const questions = []; const usedKeys = new Set(); const maxAttempts = Math.max(count * 30, 100); let attempts = 0;
+            while (questions.length < count && attempts < maxAttempts && activeModes.length) {
+                if (attempts % activeModes.length === 0) activeModes = shuffle(activeModes);
+                const mode = activeModes[attempts % activeModes.length];
+                const question = gokuTrainingModes.includes(mode) ? buildGokuQuestion(mode, gokuPool) : buildKuhouQuestion(mode, kuhouPool);
+                const key = question && getQuestionKey(question);
+                if (question && (!usedKeys.has(key) || attempts >= Math.floor(maxAttempts / 3))) { questions.push(question); usedKeys.add(key); }
+                attempts++;
             }
             return questions;
+        };
+        const renderGokuEntryExplanation = (entry, heading = '') => {
+            const meanings = uniqueNonEmptyStrings(entry.meanings); const example = entry.example || {}; const exampleFields = [['白文', example.hakubun], ['書き下し', example.kakikudashi], ['現代語訳', example.translation]].filter(([, value]) => value);
+            return `<div class="tr-used-kuhou">${heading ? `<strong>${heading}</strong>` : ''}${entry.reading ? `<div>読み: ${sanitizeHTML(entry.reading)}</div>` : ''}${entry.partOfSpeech ? `<div>品詞: ${sanitizeHTML(entry.partOfSpeech)}</div>` : ''}${meanings.length ? `<div>意味:</div><ul class="tr-goku-meanings">${meanings.map(meaning => `<li>${sanitizeHTML(meaning)}</li>`).join('')}</ul>` : ''}${exampleFields.length ? `<div class="tr-goku-example"><div>例文:</div>${exampleFields.map(([label, value]) => `<div class="tr-example-field"><span>${label}</span><div>${sanitizeHTML(value)}</div></div>`).join('')}</div>` : ''}</div>`;
+        };
+        const renderGokuExplanation = (question) => {
+            const item = question.gokuItem || gokuData.find(goku => String(goku.id) === String(question.gokuId)) || {}; const entries = item.entries || []; const variants = uniqueNonEmptyStrings(item.variants);
+            const targetEntry = question.entry || entries[question.entryIndex]; const otherEntries = question.mode === 'goku2meaning' ? entries.filter((entry, index) => index !== question.entryIndex) : [];
+            const entriesHTML = question.mode === 'goku2reading' ? entries.map((entry, index) => renderGokuEntryExplanation(entry, `${index + 1}. 読み・意味`)).join('') : renderGokuEntryExplanation(targetEntry || {}, '今回の読み・意味');
+            return `<div class="tr-explanation tr-goku-explanation"><div class="tr-example-field"><span>語句</span><div>${sanitizeHTML(item.title || '')}</div></div>${variants.length ? `<div class="tr-example-field"><span>異体字・類義字</span><div>${variants.map(sanitizeHTML).join('・')}</div></div>` : ''}${entriesHTML}${otherEntries.length ? `<details class="details-section"><summary>その他の読み・意味</summary><div class="details-content">${otherEntries.map((entry, index) => renderGokuEntryExplanation(entry, `${index + 1}. 読み・意味`)).join('')}</div></details>` : ''}${item.commonMemo ? `<div class="tr-example-field"><span>メモ</span><div>${sanitizeHTML(item.commonMemo)}</div></div>` : ''}</div>`;
         };
         const renderTraining = () => {
             const c = document.getElementById('training-container');
             if (trainingState.screen === 'start') {
                 const allTags = [...new Set(getAllSubgroups().flatMap(({ sg }) => sg.tags || []))].sort((a,b)=>a.localeCompare(b,'ja'));
+                const allGokuTags = [...new Set(gokuData.flatMap(item => item.tags || []))].sort((a,b)=>a.localeCompare(b,'ja'));
                 const renderModeChips = (modes) => modes.map(key => `<button class="tr-chip tr-mode-chip ${trainingState.settings.modes.includes(key) ? 'active' : ''}" data-mode="${key}">${trainingModes[key]}</button>`).join('');
                 const tagChips = allTags.length ? allTags.map(t => `<button class="tr-chip tr-tag-chip ${trainingState.settings.tags.includes(t) ? 'active' : ''}" data-tag="${sanitizeHTML(t)}">${sanitizeHTML(t)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
-                c.innerHTML = `${renderHistoryStats()}<div class="training-card"><h2>句法トレーニング（4択）</h2>
-                    <div class="tr-section"><div class="tr-label">出題モード（複数選択可）</div><div class="tr-mode-group"><div class="tr-mode-group-label">句法</div><div class="tr-chips">${renderModeChips(kuhouTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">例文</div><div class="tr-chips">${renderModeChips(exampleTrainingModes)}</div></div></div>
-                    <div class="tr-section"><div class="tr-label">タグで絞り込み（AND、任意）</div><div class="tr-chips">${tagChips}</div></div>
-                    <div class="tr-section"><div class="tr-label">出題範囲</div><div class="tr-chips"><button class="tr-chip" id="tr-checked-only-chip" style="${trainingState.settings.checkedOnly ? 'background:#f5b301;color:#fff;border-color:#f5b301' : ''}">★ チェック済みのみ</button></div></div>
+                const gokuTagChips = allGokuTags.length ? allGokuTags.map(t => `<button class="tr-chip tr-goku-tag-chip ${trainingState.settings.gokuTags.includes(t) ? 'active' : ''}" data-tag="${sanitizeHTML(t)}">${sanitizeHTML(t)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
+                c.innerHTML = `${renderHistoryStats()}<div class="training-card"><h2>トレーニング（4択）</h2>
+                    <div class="tr-section"><div class="tr-label">出題モード（複数選択可）</div><div class="tr-mode-group"><div class="tr-mode-group-label">句法</div><div class="tr-chips">${renderModeChips(kuhouTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">例文</div><div class="tr-chips">${renderModeChips(exampleTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">語句</div><div class="tr-chips">${renderModeChips(gokuTrainingModes)}</div></div></div>
+                    <div class="tr-section"><div class="tr-label">句法・例文タグで絞り込み（AND、任意）</div><div class="tr-chips">${tagChips}</div></div>
+                    <div class="tr-section"><div class="tr-label">語句タグで絞り込み（AND、任意）</div><div class="tr-chips">${gokuTagChips}</div></div>
+                    <div class="tr-section"><div class="tr-label">出題範囲</div><div class="tr-chips"><button class="tr-chip" id="tr-checked-only-chip" style="${trainingState.settings.checkedOnly ? 'background:#f5b301;color:#fff;border-color:#f5b301' : ''}">★ チェック済みのみ</button></div><div style="font-size:12px;color:var(--muted);margin-top:6px">★ チェック済みのみ使用時は語句問題を除外します</div></div>
                     <div class="tr-section"><div class="tr-label">問題数</div><input type="number" class="tr-count-input" id="tr-count" min="1" max="50" value="${trainingState.settings.count}"></div>
                     <button class="btn tr-start-btn" id="tr-start-btn">スタート</button></div>`;
             } else if (trainingState.screen === 'question') {
@@ -74,8 +142,9 @@
                 const questionLabel = trainingModes[q.mode];
                 const choicesHTML = q.choices.map(ch => `<button class="tr-choice" data-choice="${sanitizeHTML(ch)}" ${trainingState.answered ? 'disabled' : ''}>${sanitizeHTML(ch)}</button>`).join('');
                 const currentEx = q.questionType === 'example' ? (q.example || q.subgroup.examples?.[q.exIdx]) : null;
-                const explainHTML = trainingState.answered ? `${q.questionType === 'example' ? renderExampleExplanation(q) : `<div class="tr-explanation">${renderKuhouExplanation(q.group, q.subgroup)}</div>`}<button class="btn tr-next-btn" id="tr-next-btn">${trainingState.idx + 1 >= trainingState.questions.length ? '結果を見る' : '次の問題 →'}</button>` : '';
-                const checkRow = `<div class="tr-check-row"><button class="tr-check-toggle tr-sg-check ${q.subgroup.checked ? 'checked' : ''}">${q.subgroup.checked ? '★' : '☆'} 句法「${sanitizeHTML(q.subgroup.subgroupTitle)}」</button>${currentEx ? `<button class="tr-check-toggle tr-ex-check ${currentEx.checked ? 'checked' : ''}">${currentEx.checked ? '★' : '☆'} この例文</button>` : ''}</div>`;
+                const explanation = q.questionType === 'example' ? renderExampleExplanation(q) : q.questionType === 'goku' ? renderGokuExplanation(q) : `<div class="tr-explanation">${renderKuhouExplanation(q.group, q.subgroup)}</div>`;
+                const explainHTML = trainingState.answered ? `${explanation}<button class="btn tr-next-btn" id="tr-next-btn">${trainingState.idx + 1 >= trainingState.questions.length ? '結果を見る' : '次の問題 →'}</button>` : '';
+                const checkRow = q.questionType === 'goku' ? '' : `<div class="tr-check-row"><button class="tr-check-toggle tr-sg-check ${q.subgroup.checked ? 'checked' : ''}">${q.subgroup.checked ? '★' : '☆'} 句法「${sanitizeHTML(q.subgroup.subgroupTitle)}」</button>${currentEx ? `<button class="tr-check-toggle tr-ex-check ${currentEx.checked ? 'checked' : ''}">${currentEx.checked ? '★' : '☆'} この例文</button>` : ''}</div>`;
                 c.innerHTML = `<div class="training-card"><div class="tr-progress"><div style="width:${progress}%"></div></div><div class="tr-question-meta"><span>${trainingState.idx + 1} / ${trainingState.questions.length}</span><span>正解: ${trainingState.correct}</span></div>${checkRow}<div class="tr-question">${sanitizeHTML(questionLabel)}</div><div class="tr-question-body">${sanitizeHTML(q.prompt)}</div><div class="tr-choices">${choicesHTML}</div>${explainHTML}</div>`;
                 if (trainingState.answered) {
                     c.querySelectorAll('.tr-choice').forEach(btn => { if (btn.dataset.choice === q.answer) btn.classList.add('correct'); else if (btn.dataset.choice === trainingState.lastPick && !trainingState.lastCorrect) btn.classList.add('wrong'); });
@@ -91,7 +160,7 @@
             const countEl = document.getElementById('tr-count'); if (countEl) trainingState.settings.count = Math.max(1, Math.min(50, Number(countEl.value) || 10));
             if (trainingState.settings.modes.length === 0) { alert('出題モードを1つ以上選択してください。'); return; }
             const qs = buildQuestions();
-            if (qs.length === 0) { alert('条件に合う問題を作れません。句法データ（例文・読み・訳）が4件以上必要です。'); return; }
+            if (qs.length === 0) { alert('条件に合う4択問題を作れません。出題対象と異なる選択肢がそれぞれ3件以上必要です。'); return; }
             trainingState.questions = qs; trainingState.idx = 0; trainingState.correct = 0; trainingState.answered = false; trainingState.screen = 'question'; trainingState.recorded = false; renderTraining();
         };
         const renderHistoryStats = () => {
