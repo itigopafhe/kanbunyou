@@ -5,14 +5,14 @@
         const kuhouTrainingModes = ['title2reading', 'title2meaning'];
         const exampleTrainingModes = ['hakubun2kakikudashi', 'hakubun2translation', 'kakikudashi2translation'];
         const gokuTrainingModes = ['goku2reading', 'goku2meaning'];
-        const trainingState = { screen: 'start', settings: { modes: ['title2reading', 'title2meaning', 'kakikudashi2translation'], count: 10, tags: [], gokuTags: [], checkedOnly: false }, questions: [], idx: 0, correct: 0, answered: false, lastCorrect: false };
+        const trainingState = { screen: 'start', settings: { modes: ['title2reading', 'title2meaning', 'kakikudashi2translation'], count: 10, tags: [], gokuTags: [], checkedOnly: false }, tagOptions: { kuhou: [], goku: [] }, questions: [], idx: 0, correct: 0, answered: false, lastCorrect: false, lastPickIndex: -1 };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
         const getAllSubgroups = () => kuhouData.flatMap(g => (g.subgroups || []).map(sg => ({ group: g, sg })));
         const getExampleUsedKuhouIds = (example, ownerSubgroup) => [...new Set([ownerSubgroup?.subgroupId, ...(Array.isArray(example?.usedKuhouIds) ? example.usedKuhouIds : [])].filter(id => id !== undefined && id !== null && id !== ''))];
         const getExampleUsedKuhou = (example, ownerSubgroup) => { const usedIds = new Set(getExampleUsedKuhouIds(example, ownerSubgroup).map(String)); return getAllSubgroups().filter(({ sg }) => usedIds.has(String(sg.subgroupId))); };
         const renderKuhouExplanation = (group, subgroup, index = null) => { const heading = index === null ? `${sanitizeHTML(group.groupTitle)} — ${sanitizeHTML(subgroup.subgroupTitle)}` : `${index}. ${sanitizeHTML(subgroup.subgroupTitle)}`; return `<div class="tr-used-kuhou"><strong>${heading}</strong>${subgroup.reading ? `<div>読み: ${sanitizeHTML(subgroup.reading)}</div>` : ''}${subgroup.meaning ? `<div>意味: ${sanitizeHTML(subgroup.meaning)}</div>` : ''}${subgroup.explanation ? `<div>解説: ${sanitizeHTML(subgroup.explanation)}</div>` : ''}</div>`; };
         const renderExampleExplanation = (question) => { const example = question.example || question.subgroup.examples?.[question.exIdx] || {}; const fields = [['白文', example.hakubun], ['書き下し', example.kakikudashi], ['現代語訳', example.translation]].filter(([, value]) => value); if (example.source) fields.push(['出典', example.source]); const usedKuhou = getExampleUsedKuhou(example, question.subgroup); return `<div class="tr-explanation tr-example-explanation">${fields.map(([label, value]) => `<div class="tr-example-field"><span>${label}</span><div>${sanitizeHTML(value)}</div></div>`).join('')}${usedKuhou.length ? `<div class="tr-used-kuhou-section"><div class="tr-used-kuhou-title">この例文で使われている句法</div>${usedKuhou.map(({ group, sg }, index) => renderKuhouExplanation(group, sg, index + 1)).join('')}</div>` : ''}</div>`; };
-        const buildKuhouQuestion = (mode, pool) => {
+        const buildKuhouQuestionCandidates = (mode, pool) => {
             const shuffled = shuffle(pool);
             const checkedOnly = trainingState.settings.checkedOnly;
             const questionType = exampleTrainingModes.includes(mode) ? 'example' : 'kuhou';
@@ -27,26 +27,32 @@
                 if (mode === 'kakikudashi2translation') { const example = findEx(ex => ex.kakikudashi && ex.translation); return example ? { prompt: example.kakikudashi, answer: example.translation, distractorField: 'exTranslation', exIdx: sg.examples.indexOf(example), example } : null; }
                 return null;
             };
-            for (const item of shuffled) {
-                const t = pickTarget(item); if (!t) continue;
+            const targets = shuffled.map(item => ({ item, target: pickTarget(item) })).filter(({ target }) => target);
+            return targets.reduce((questions, { item, target: t }) => {
                 const distractors = []; const seen = new Set([t.answer]);
-                for (const other of shuffled) {
-                    if (other === item) continue;
+                for (const other of targets) {
+                    if (other.item === item) continue;
                     let val = null;
-                    if (t.distractorField === 'exTranslation') { const ex = (other.sg.examples||[]).find(e => e.translation && e.translation !== t.answer); if (ex) val = ex.translation; }
-                    else if (t.distractorField === 'exKakikudashi') { const ex = (other.sg.examples||[]).find(e => e.kakikudashi && e.kakikudashi !== t.answer); if (ex) val = ex.kakikudashi; }
-                    else val = other.sg[t.distractorField];
+                    if (t.distractorField === 'exTranslation') { const ex = (other.item.sg.examples||[]).find(e => e.translation && e.translation !== t.answer); if (ex) val = ex.translation; }
+                    else if (t.distractorField === 'exKakikudashi') { const ex = (other.item.sg.examples||[]).find(e => e.kakikudashi && e.kakikudashi !== t.answer); if (ex) val = ex.kakikudashi; }
+                    else val = other.item.sg[t.distractorField];
                     if (val && !seen.has(val)) { distractors.push(val); seen.add(val); if (distractors.length >= 3) break; }
                 }
-                if (distractors.length < 3) continue;
+                if (distractors.length < 3) return questions;
                 const choices = shuffle([t.answer, ...distractors]);
-                return { questionType, mode, prompt: t.prompt, answer: t.answer, choices, subgroup: item.sg, group: item.group, exIdx: t.exIdx, example: t.example };
-            }
-            return null;
+                questions.push({ questionType, mode, prompt: t.prompt, answer: t.answer, choices, subgroup: item.sg, group: item.group, exIdx: t.exIdx, example: t.example });
+                return questions;
+            }, []);
         };
+        const buildKuhouQuestion = (mode, pool) => buildKuhouQuestionCandidates(mode, pool)[0] || null;
         const uniqueNonEmptyStrings = (values) => [...new Set((values || []).map(value => String(value || '').trim()).filter(Boolean))];
-        const getGokuReadingAnswer = (item) => uniqueNonEmptyStrings((item.entries || []).map(entry => entry.reading)).join('・');
-        const getGokuMeaningAnswer = (entry) => uniqueNonEmptyStrings(entry.meanings).map(meaning => `・${meaning}`).join('\n');
+        const makeAnswerKey = (values) => uniqueNonEmptyStrings(values).sort((a, b) => a.localeCompare(b, 'ja')).join('\u0000');
+        const getGokuReadingAnswerParts = (item) => uniqueNonEmptyStrings((item.entries || []).map(entry => entry.reading));
+        const getGokuReadingAnswer = (item) => getGokuReadingAnswerParts(item).join('・');
+        const getGokuReadingAnswerKey = (item) => makeAnswerKey(getGokuReadingAnswerParts(item));
+        const getGokuMeaningAnswerParts = (entry) => uniqueNonEmptyStrings(entry.meanings);
+        const getGokuMeaningAnswer = (entry) => getGokuMeaningAnswerParts(entry).map(meaning => `・${meaning}`).join('\n');
+        const getGokuMeaningAnswerKey = (entry) => makeAnswerKey(getGokuMeaningAnswerParts(entry));
         const isUnambiguousGokuMeaningEntry = (item, entryIndex) => {
             const entries = item.entries || []; const entry = entries[entryIndex] || {}; const reading = String(entry.reading || '').trim();
             if (!reading) return entries.length === 1;
@@ -62,51 +68,81 @@
             if (sameReadingCount > 1 && entry.partOfSpeech) prompt.push(`品詞: ${entry.partOfSpeech}`);
             return prompt.join('\n');
         };
-        const buildGokuQuestion = (mode, pool) => {
+        const buildGokuQuestionCandidates = (mode, pool) => {
             const shuffledItems = shuffle(pool);
             if (mode === 'goku2reading') {
+                const questions = [];
                 for (const item of shuffledItems) {
-                    const answer = getGokuReadingAnswer(item); if (!answer) continue;
-                    const distractors = []; const seen = new Set([answer]);
+                    const answer = getGokuReadingAnswer(item); const answerKey = getGokuReadingAnswerKey(item); if (!answerKey) continue;
+                    const distractors = []; const seen = new Set([answerKey]);
                     for (const other of shuffledItems) {
                         if (other === item) continue;
                         const value = getGokuReadingAnswer(other);
-                        if (value && !seen.has(value)) { distractors.push(value); seen.add(value); if (distractors.length === 3) break; }
+                        const key = getGokuReadingAnswerKey(other);
+                        if (value && key && !seen.has(key)) { distractors.push(value); seen.add(key); if (distractors.length === 3) break; }
                     }
-                    if (distractors.length === 3) return { questionType: 'goku', mode, prompt: item.title, answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex: null, gokuItem: item, entry: null };
+                    if (distractors.length === 3) questions.push({ questionType: 'goku', mode, prompt: item.title, answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex: null, gokuItem: item, entry: null });
                 }
-                return null;
+                return questions;
             }
             const candidates = shuffle(shuffledItems.flatMap(item => (item.entries || []).map((entry, entryIndex) => ({ item, entry, entryIndex }))));
+            const questions = [];
             for (const candidate of candidates) {
-                const { item, entry, entryIndex } = candidate; const answer = getGokuMeaningAnswer(entry);
-                if (!answer || !isUnambiguousGokuMeaningEntry(item, entryIndex)) continue;
-                const distractors = []; const seen = new Set([answer]);
+                const { item, entry, entryIndex } = candidate; const answer = getGokuMeaningAnswer(entry); const answerKey = getGokuMeaningAnswerKey(entry);
+                if (!answerKey || !isUnambiguousGokuMeaningEntry(item, entryIndex)) continue;
+                const distractors = []; const seen = new Set([answerKey]);
                 for (const other of candidates) {
                     if (other.item === item && other.entryIndex === entryIndex) continue;
                     const value = getGokuMeaningAnswer(other.entry);
-                    if (value && !seen.has(value)) { distractors.push(value); seen.add(value); if (distractors.length === 3) break; }
+                    const key = getGokuMeaningAnswerKey(other.entry);
+                    if (value && key && !seen.has(key)) { distractors.push(value); seen.add(key); if (distractors.length === 3) break; }
                 }
-                if (distractors.length === 3) return { questionType: 'goku', mode, prompt: getGokuMeaningPrompt(item, entry, entryIndex), answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex, gokuItem: item, entry };
+                if (distractors.length === 3) questions.push({ questionType: 'goku', mode, prompt: getGokuMeaningPrompt(item, entry, entryIndex), answer, choices: shuffle([answer, ...distractors]), gokuId: item.id, entryIndex, gokuItem: item, entry });
             }
-            return null;
+            return questions;
         };
+        const buildGokuQuestion = (mode, pool) => buildGokuQuestionCandidates(mode, pool)[0] || null;
         const getQuestionKey = (question) => question.questionType === 'goku' ? `goku:${question.gokuId}:${question.entryIndex === null ? 'item' : question.entryIndex}:${question.mode}` : `kuhou:${question.subgroup.subgroupId}:${question.exIdx}:${question.mode}`;
-        const buildQuestions = () => {
-            const { modes, count, tags, gokuTags, checkedOnly } = trainingState.settings;
+        const dedupeQuestionCandidates = (candidates) => { const seen = new Set(); return candidates.filter(question => { const key = getQuestionKey(question); if (seen.has(key)) return false; seen.add(key); return true; }); };
+        const buildQuestionCandidatePools = () => {
+            const { modes, tags, gokuTags, checkedOnly } = trainingState.settings;
             let kuhouPool = getAllSubgroups();
             if (tags.length) kuhouPool = kuhouPool.filter(({ sg }) => tags.every(t => (sg.tags||[]).includes(t)));
             let gokuPool = gokuData.slice();
             if (gokuTags.length) gokuPool = gokuPool.filter(item => gokuTags.every(t => (item.tags || []).includes(t)));
-            let activeModes = modes.filter(mode => !checkedOnly || !gokuTrainingModes.includes(mode));
-            const questions = []; const usedKeys = new Set(); const maxAttempts = Math.max(count * 30, 100); let attempts = 0;
-            while (questions.length < count && attempts < maxAttempts && activeModes.length) {
-                if (attempts % activeModes.length === 0) activeModes = shuffle(activeModes);
-                const mode = activeModes[attempts % activeModes.length];
-                const question = gokuTrainingModes.includes(mode) ? buildGokuQuestion(mode, gokuPool) : buildKuhouQuestion(mode, kuhouPool);
-                const key = question && getQuestionKey(question);
-                if (question && (!usedKeys.has(key) || attempts >= Math.floor(maxAttempts / 3))) { questions.push(question); usedKeys.add(key); }
-                attempts++;
+            return modes.filter(mode => !checkedOnly || !gokuTrainingModes.includes(mode)).map(mode => {
+                const candidates = gokuTrainingModes.includes(mode) ? buildGokuQuestionCandidates(mode, gokuPool) : buildKuhouQuestionCandidates(mode, kuhouPool);
+                return { mode, candidates: dedupeQuestionCandidates(candidates) };
+            }).filter(pool => pool.candidates.length > 0);
+        };
+        const buildQuestions = () => {
+            const { count } = trainingState.settings; const pools = buildQuestionCandidatePools().map(pool => ({ ...pool, candidates: shuffle(pool.candidates), nextIndex: 0, reuseIndex: 0 }));
+            if (!pools.length) return [];
+            const questions = []; const usedKeys = new Set(); let cursor = 0;
+            while (questions.length < count) {
+                let selected = null;
+                for (let offset = 0; offset < pools.length; offset++) {
+                    const index = (cursor + offset) % pools.length; const pool = pools[index];
+                    while (pool.nextIndex < pool.candidates.length && usedKeys.has(getQuestionKey(pool.candidates[pool.nextIndex]))) pool.nextIndex++;
+                    if (pool.nextIndex < pool.candidates.length) { selected = { index, question: pool.candidates[pool.nextIndex++] }; break; }
+                }
+                if (!selected) break;
+                questions.push(selected.question); usedKeys.add(getQuestionKey(selected.question)); cursor = (selected.index + 1) % pools.length;
+            }
+            let lastKey = questions.length ? getQuestionKey(questions[questions.length - 1]) : null;
+            while (questions.length < count) {
+                let selected = null;
+                for (let offset = 0; offset < pools.length; offset++) {
+                    const index = (cursor + offset) % pools.length; const pool = pools[index]; if (!pool.candidates.length) continue;
+                    let question = null;
+                    for (let attempt = 0; attempt < pool.candidates.length; attempt++) {
+                        const candidateIndex = (pool.reuseIndex + attempt) % pool.candidates.length; const candidate = pool.candidates[candidateIndex];
+                        if (pool.candidates.length === 1 || getQuestionKey(candidate) !== lastKey) { question = candidate; pool.reuseIndex = (candidateIndex + 1) % pool.candidates.length; break; }
+                    }
+                    if (question) { selected = { index, question }; break; }
+                }
+                if (!selected) break;
+                questions.push(selected.question); lastKey = getQuestionKey(selected.question); cursor = (selected.index + 1) % pools.length;
             }
             return questions;
         };
@@ -125,9 +161,10 @@
             if (trainingState.screen === 'start') {
                 const allTags = [...new Set(getAllSubgroups().flatMap(({ sg }) => sg.tags || []))].sort((a,b)=>a.localeCompare(b,'ja'));
                 const allGokuTags = [...new Set(gokuData.flatMap(item => item.tags || []))].sort((a,b)=>a.localeCompare(b,'ja'));
+                trainingState.tagOptions.kuhou = allTags; trainingState.tagOptions.goku = allGokuTags;
                 const renderModeChips = (modes) => modes.map(key => `<button class="tr-chip tr-mode-chip ${trainingState.settings.modes.includes(key) ? 'active' : ''}" data-mode="${key}">${trainingModes[key]}</button>`).join('');
-                const tagChips = allTags.length ? allTags.map(t => `<button class="tr-chip tr-tag-chip ${trainingState.settings.tags.includes(t) ? 'active' : ''}" data-tag="${sanitizeHTML(t)}">${sanitizeHTML(t)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
-                const gokuTagChips = allGokuTags.length ? allGokuTags.map(t => `<button class="tr-chip tr-goku-tag-chip ${trainingState.settings.gokuTags.includes(t) ? 'active' : ''}" data-tag="${sanitizeHTML(t)}">${sanitizeHTML(t)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
+                const tagChips = allTags.length ? allTags.map((tag, index) => `<button class="tr-chip tr-tag-chip ${trainingState.settings.tags.includes(tag) ? 'active' : ''}" data-tag-index="${index}">${sanitizeHTML(tag)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
+                const gokuTagChips = allGokuTags.length ? allGokuTags.map((tag, index) => `<button class="tr-chip tr-goku-tag-chip ${trainingState.settings.gokuTags.includes(tag) ? 'active' : ''}" data-tag-index="${index}">${sanitizeHTML(tag)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
                 c.innerHTML = `${renderHistoryStats()}<div class="training-card"><h2>トレーニング（4択）</h2>
                     <div class="tr-section"><div class="tr-label">出題モード（複数選択可）</div><div class="tr-mode-group"><div class="tr-mode-group-label">句法</div><div class="tr-chips">${renderModeChips(kuhouTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">例文</div><div class="tr-chips">${renderModeChips(exampleTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">語句</div><div class="tr-chips">${renderModeChips(gokuTrainingModes)}</div></div></div>
                     <div class="tr-section"><div class="tr-label">句法・例文タグで絞り込み（AND、任意）</div><div class="tr-chips">${tagChips}</div></div>
@@ -140,14 +177,14 @@
                 if (!q) { trainingState.screen = 'result'; renderTraining(); return; }
                 const progress = ((trainingState.idx) / trainingState.questions.length) * 100;
                 const questionLabel = trainingModes[q.mode];
-                const choicesHTML = q.choices.map(ch => `<button class="tr-choice" data-choice="${sanitizeHTML(ch)}" ${trainingState.answered ? 'disabled' : ''}>${sanitizeHTML(ch)}</button>`).join('');
+                const choicesHTML = q.choices.map((choice, index) => `<button class="tr-choice" data-choice-index="${index}" ${trainingState.answered ? 'disabled' : ''}>${sanitizeHTML(choice)}</button>`).join('');
                 const currentEx = q.questionType === 'example' ? (q.example || q.subgroup.examples?.[q.exIdx]) : null;
                 const explanation = q.questionType === 'example' ? renderExampleExplanation(q) : q.questionType === 'goku' ? renderGokuExplanation(q) : `<div class="tr-explanation">${renderKuhouExplanation(q.group, q.subgroup)}</div>`;
                 const explainHTML = trainingState.answered ? `${explanation}<button class="btn tr-next-btn" id="tr-next-btn">${trainingState.idx + 1 >= trainingState.questions.length ? '結果を見る' : '次の問題 →'}</button>` : '';
                 const checkRow = q.questionType === 'goku' ? '' : `<div class="tr-check-row"><button class="tr-check-toggle tr-sg-check ${q.subgroup.checked ? 'checked' : ''}">${q.subgroup.checked ? '★' : '☆'} 句法「${sanitizeHTML(q.subgroup.subgroupTitle)}」</button>${currentEx ? `<button class="tr-check-toggle tr-ex-check ${currentEx.checked ? 'checked' : ''}">${currentEx.checked ? '★' : '☆'} この例文</button>` : ''}</div>`;
                 c.innerHTML = `<div class="training-card"><div class="tr-progress"><div style="width:${progress}%"></div></div><div class="tr-question-meta"><span>${trainingState.idx + 1} / ${trainingState.questions.length}</span><span>正解: ${trainingState.correct}</span></div>${checkRow}<div class="tr-question">${sanitizeHTML(questionLabel)}</div><div class="tr-question-body">${sanitizeHTML(q.prompt)}</div><div class="tr-choices">${choicesHTML}</div>${explainHTML}</div>`;
                 if (trainingState.answered) {
-                    c.querySelectorAll('.tr-choice').forEach(btn => { if (btn.dataset.choice === q.answer) btn.classList.add('correct'); else if (btn.dataset.choice === trainingState.lastPick && !trainingState.lastCorrect) btn.classList.add('wrong'); });
+                    const answerIndex = q.choices.indexOf(q.answer); c.querySelectorAll('.tr-choice').forEach(btn => { const index = Number(btn.dataset.choiceIndex); if (index === answerIndex) btn.classList.add('correct'); else if (index === trainingState.lastPickIndex && !trainingState.lastCorrect) btn.classList.add('wrong'); });
                 }
             } else if (trainingState.screen === 'result') {
                 const total = trainingState.questions.length;
@@ -161,7 +198,7 @@
             if (trainingState.settings.modes.length === 0) { alert('出題モードを1つ以上選択してください。'); return; }
             const qs = buildQuestions();
             if (qs.length === 0) { alert('条件に合う4択問題を作れません。出題対象と異なる選択肢がそれぞれ3件以上必要です。'); return; }
-            trainingState.questions = qs; trainingState.idx = 0; trainingState.correct = 0; trainingState.answered = false; trainingState.screen = 'question'; trainingState.recorded = false; renderTraining();
+            trainingState.questions = qs; trainingState.idx = 0; trainingState.correct = 0; trainingState.answered = false; trainingState.lastPickIndex = -1; trainingState.screen = 'question'; trainingState.recorded = false; renderTraining();
         };
         const renderHistoryStats = () => {
             const totalQuestions = studyHistory.reduce((a,h)=>a+h.total,0);
