@@ -300,11 +300,16 @@
                     if (sg.explanation === undefined) sg.explanation = c.explanation || '';
                     if (sg.memo === undefined) sg.memo = c.memo || '';
                     if (sg.meaning === undefined) sg.meaning = c.translation || '';
-                    let examples = Array.isArray(c.examples) ? c.examples.slice() : [];
-                    if ((!examples || examples.length === 0) && c.example && (c.example.hakubun || c.example.kakikudashi || c.example.translation)) examples = [c.example];
-                    if (c.hakubun || c.kakikudashi) {
-                        const first = { hakubun: c.hakubun || '', kakikudashi: c.kakikudashi || '', translation: c.translation || '', source: '' };
-                        if (!examples.some(ex => ex.hakubun === first.hakubun && ex.kakikudashi === first.kakikudashi)) examples.unshift(first);
+                    let examples;
+                    if (Array.isArray(sg.examples)) {
+                        examples = sg.examples;
+                    } else {
+                        examples = Array.isArray(c.examples) ? c.examples.slice() : [];
+                        if (examples.length === 0 && c.example && (c.example.hakubun || c.example.kakikudashi || c.example.translation || c.example.source)) examples = [c.example];
+                        if (c.hakubun || c.kakikudashi || c.translation || c.source) {
+                            const first = { hakubun: c.hakubun || '', kakikudashi: c.kakikudashi || '', translation: c.translation || '', source: c.source || '' };
+                            if (!examples.some(ex => ex.hakubun === first.hakubun && ex.kakikudashi === first.kakikudashi)) examples.unshift(first);
+                        }
                     }
                     sg.examples = examples;
                     if (sg.checked === undefined) sg.checked = false;
@@ -554,9 +559,9 @@
         const openGroupForm = (group = null) => { const isEdit = group !== null; const title = isEdit ? 'グループを編集' : '新規グループを追加'; const formHTML = `<form id="group-form-modal"><label>グループ名</label><input type="text" id="group-title" value="${isEdit ? sanitizeHTML(group.groupTitle) : ''}" required></form>`; showModal(title, formHTML, () => { const newTitle = document.getElementById('group-title').value.trim(); if (newTitle) { if (isEdit) { group.groupTitle = newTitle; } else { kuhouData.push({ groupId: Date.now(), groupTitle: newTitle, subgroups: [] }); } saveAndRender(); hideModal(); } }); };
         const openSubgroupForm = (group, subgroup = null) => {
             const isEdit = subgroup !== null; const tags = isEdit ? (subgroup.tags || []).join(', ') : ''; const title = isEdit ? '句法を編集' : '新規句法を追加';
-            const createExHTML = (ex = {}, idx) => `<fieldset class="kuhou-ex-form"><legend>例文${idx!==undefined?' '+(idx+1):''}</legend><button type="button" class="delete-ex-btn delete-btn" style="float:right;">削除</button><label>白文</label><input type="text" class="ex-hakubun" value="${sanitizeHTML(ex.hakubun||'')}"><label>書き下し文</label><input type="text" class="ex-kakikudashi" value="${sanitizeHTML(ex.kakikudashi||'')}"><label>日本語訳</label><input type="text" class="ex-translation" value="${sanitizeHTML(ex.translation||'')}"><label>出典</label><input type="text" class="ex-source" value="${sanitizeHTML(ex.source||'')}"></fieldset>`;
+            const createExHTML = (ex = {}, idx, existingIndex = '') => `<fieldset class="kuhou-ex-form" data-existing-example-index="${existingIndex}"><legend>例文${idx!==undefined?' '+(idx+1):''}</legend><button type="button" class="delete-ex-btn delete-btn" style="float:right;">削除</button><label>白文</label><input type="text" class="ex-hakubun" value="${sanitizeHTML(ex.hakubun||'')}"><label>書き下し文</label><input type="text" class="ex-kakikudashi" value="${sanitizeHTML(ex.kakikudashi||'')}"><label>日本語訳</label><input type="text" class="ex-translation" value="${sanitizeHTML(ex.translation||'')}"><label>出典</label><input type="text" class="ex-source" value="${sanitizeHTML(ex.source||'')}"></fieldset>`;
             const examples = (isEdit && Array.isArray(subgroup.examples)) ? subgroup.examples : [];
-            const examplesHTML = examples.length ? examples.map((ex,i)=>createExHTML(ex,i)).join('') : createExHTML({},0);
+            const examplesHTML = examples.length ? examples.map((ex,i)=>createExHTML(ex,i,i)).join('') : createExHTML({},0);
             const formHTML = `<form id="subgroup-form-modal">
                 <label>句法名</label><input type="text" id="subgroup-title" value="${isEdit ? sanitizeHTML(subgroup.subgroupTitle) : ''}" required placeholder="例: 不">
                 <label>読み</label><input type="text" id="subgroup-reading" value="${isEdit ? sanitizeHTML(subgroup.reading || '') : ''}" placeholder="例: 〜せず">
@@ -569,7 +574,7 @@
             showModal(title, formHTML, () => {
                 const form = document.getElementById('subgroup-form-modal'); const newSubgroupTitle = form.querySelector('#subgroup-title').value.trim(); if(!newSubgroupTitle) { alert('句法名は必須です。'); return; }
                 const newTags = form.querySelector('#tags').value.split(',').map(t => t.trim()).filter(Boolean);
-                const newExamples = [...form.querySelectorAll('.kuhou-ex-form')].map(fs => ({ hakubun: fs.querySelector('.ex-hakubun').value, kakikudashi: fs.querySelector('.ex-kakikudashi').value, translation: fs.querySelector('.ex-translation').value, source: fs.querySelector('.ex-source').value })).filter(ex => ex.hakubun || ex.kakikudashi || ex.translation || ex.source);
+                const newExamples = [...form.querySelectorAll('.kuhou-ex-form')].map(fs => { const existingIndex = fs.dataset.existingExampleIndex; const existing = existingIndex === '' ? {} : (subgroup.examples[Number(existingIndex)] || {}); return { ...existing, hakubun: fs.querySelector('.ex-hakubun').value, kakikudashi: fs.querySelector('.ex-kakikudashi').value, translation: fs.querySelector('.ex-translation').value, source: fs.querySelector('.ex-source').value }; }).filter(ex => ex.hakubun || ex.kakikudashi || ex.translation || ex.source);
                 const payload = { subgroupTitle: newSubgroupTitle, reading: form.querySelector('#subgroup-reading').value.trim(), meaning: form.querySelector('#subgroup-meaning').value.trim(), tags: newTags, explanation: form.querySelector('#sg-explanation').value, memo: form.querySelector('#sg-memo').value, examples: newExamples };
                 if (isEdit) { Object.assign(subgroup, payload); delete subgroup.card; }
                 else { group.subgroups.push({ subgroupId: Date.now(), ...payload }); }
