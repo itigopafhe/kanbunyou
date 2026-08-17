@@ -2,13 +2,30 @@
         const recordSession = (total, correct) => { const t = todayStr(); const entry = studyHistory.find(h => h.date === t); if (entry) { entry.total += total; entry.correct += correct; } else { studyHistory.push({ date: t, total, correct }); } localStorage.setItem('kanbunHistory', JSON.stringify(studyHistory)); };
 
         const trainingModes = { title2reading: '句法名 → 読み', title2meaning: '句法名 → 訳', hakubun2kakikudashi: '白文 → 書き下し', hakubun2translation: '白文 → 日本語訳', kakikudashi2translation: '書き下し → 日本語訳' };
+        const kuhouTrainingModes = ['title2reading', 'title2meaning'];
+        const exampleTrainingModes = ['hakubun2kakikudashi', 'hakubun2translation', 'kakikudashi2translation'];
         const trainingState = { screen: 'start', settings: { modes: ['title2reading', 'title2meaning', 'kakikudashi2translation'], count: 10, tags: [], checkedOnly: false }, questions: [], idx: 0, correct: 0, answered: false, lastCorrect: false };
         const shuffle = (arr) => { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-        const getAllSubgroups = () => kuhouData.flatMap(g => g.subgroups.map(sg => ({ group: g, sg })));
+        const getAllSubgroups = () => kuhouData.flatMap(g => (g.subgroups || []).map(sg => ({ group: g, sg })));
+        const getExampleUsedKuhouIds = (example, ownerSubgroup) => [...new Set([ownerSubgroup?.subgroupId, ...(Array.isArray(example?.usedKuhouIds) ? example.usedKuhouIds : [])].filter(id => id !== undefined && id !== null && id !== ''))];
+        const getExampleUsedKuhou = (example, ownerSubgroup) => { const usedIds = new Set(getExampleUsedKuhouIds(example, ownerSubgroup).map(String)); return getAllSubgroups().filter(({ sg }) => usedIds.has(String(sg.subgroupId))); };
+        const renderKuhouExplanation = (group, subgroup, index = null) => { const heading = index === null ? `${sanitizeHTML(group.groupTitle)} — ${sanitizeHTML(subgroup.subgroupTitle)}` : `${index}. ${sanitizeHTML(subgroup.subgroupTitle)}`; return `<div class="tr-used-kuhou"><strong>${heading}</strong>${subgroup.reading ? `<div>読み: ${sanitizeHTML(subgroup.reading)}</div>` : ''}${subgroup.meaning ? `<div>意味: ${sanitizeHTML(subgroup.meaning)}</div>` : ''}${subgroup.explanation ? `<div>解説: ${sanitizeHTML(subgroup.explanation)}</div>` : ''}</div>`; };
+        const renderExampleExplanation = (question) => { const example = question.example || question.subgroup.examples?.[question.exIdx] || {}; const fields = [['白文', example.hakubun], ['書き下し', example.kakikudashi], ['現代語訳', example.translation]].filter(([, value]) => value); if (example.source) fields.push(['出典', example.source]); const usedKuhou = getExampleUsedKuhou(example, question.subgroup); return `<div class="tr-explanation tr-example-explanation">${fields.map(([label, value]) => `<div class="tr-example-field"><span>${label}</span><div>${sanitizeHTML(value)}</div></div>`).join('')}${usedKuhou.length ? `<div class="tr-used-kuhou-section"><div class="tr-used-kuhou-title">この例文で使われている句法</div>${usedKuhou.map(({ group, sg }, index) => renderKuhouExplanation(group, sg, index + 1)).join('')}</div>` : ''}</div>`; };
         const buildQuestion = (mode, pool) => {
             const shuffled = shuffle(pool);
             const checkedOnly = trainingState.settings.checkedOnly;
-            const pickTarget = (item) => { const { sg } = item; const findEx = (fn) => (sg.examples||[]).find(e => fn(e) && (!checkedOnly || e.checked)); if (checkedOnly && (mode === 'title2reading' || mode === 'title2meaning') && !sg.checked) return null; if (mode === 'title2reading') return sg.reading ? { prompt: sg.subgroupTitle, answer: sg.reading, distractorField: 'reading', exIdx: -1 } : null; if (mode === 'title2meaning') return sg.meaning ? { prompt: sg.subgroupTitle, answer: sg.meaning, distractorField: 'meaning', exIdx: -1 } : null; if (mode === 'hakubun2kakikudashi') { const ex = findEx(e => e.hakubun && e.kakikudashi); return ex ? { prompt: ex.hakubun, answer: ex.kakikudashi, distractorField: 'exKakikudashi', exIdx: sg.examples.indexOf(ex) } : null; } if (mode === 'hakubun2translation') { const ex = findEx(e => e.hakubun && e.translation); return ex ? { prompt: ex.hakubun, answer: ex.translation, distractorField: 'exTranslation', exIdx: sg.examples.indexOf(ex) } : null; } if (mode === 'kakikudashi2translation') { const ex = findEx(e => e.kakikudashi && e.translation); return ex ? { prompt: ex.kakikudashi, answer: ex.translation, distractorField: 'exTranslation', exIdx: sg.examples.indexOf(ex) } : null; } return null; };
+            const questionType = exampleTrainingModes.includes(mode) ? 'example' : 'kuhou';
+            const pickTarget = (item) => {
+                const { sg } = item;
+                const findEx = (fn) => (sg.examples || []).find(ex => fn(ex) && (!checkedOnly || ex.checked));
+                if (checkedOnly && questionType === 'kuhou' && !sg.checked) return null;
+                if (mode === 'title2reading') return sg.reading ? { prompt: sg.subgroupTitle, answer: sg.reading, distractorField: 'reading', exIdx: -1, example: null } : null;
+                if (mode === 'title2meaning') return sg.meaning ? { prompt: sg.subgroupTitle, answer: sg.meaning, distractorField: 'meaning', exIdx: -1, example: null } : null;
+                if (mode === 'hakubun2kakikudashi') { const example = findEx(ex => ex.hakubun && ex.kakikudashi); return example ? { prompt: example.hakubun, answer: example.kakikudashi, distractorField: 'exKakikudashi', exIdx: sg.examples.indexOf(example), example } : null; }
+                if (mode === 'hakubun2translation') { const example = findEx(ex => ex.hakubun && ex.translation); return example ? { prompt: example.hakubun, answer: example.translation, distractorField: 'exTranslation', exIdx: sg.examples.indexOf(example), example } : null; }
+                if (mode === 'kakikudashi2translation') { const example = findEx(ex => ex.kakikudashi && ex.translation); return example ? { prompt: example.kakikudashi, answer: example.translation, distractorField: 'exTranslation', exIdx: sg.examples.indexOf(example), example } : null; }
+                return null;
+            };
             for (const item of shuffled) {
                 const t = pickTarget(item); if (!t) continue;
                 const distractors = []; const seen = new Set([t.answer]);
@@ -22,7 +39,7 @@
                 }
                 if (distractors.length < 3) continue;
                 const choices = shuffle([t.answer, ...distractors]);
-                return { mode, prompt: t.prompt, answer: t.answer, choices, subgroup: item.sg, group: item.group, exIdx: t.exIdx };
+                return { questionType, mode, prompt: t.prompt, answer: t.answer, choices, subgroup: item.sg, group: item.group, exIdx: t.exIdx, example: t.example };
             }
             return null;
         };
@@ -42,10 +59,10 @@
             const c = document.getElementById('training-container');
             if (trainingState.screen === 'start') {
                 const allTags = [...new Set(getAllSubgroups().flatMap(({ sg }) => sg.tags || []))].sort((a,b)=>a.localeCompare(b,'ja'));
-                const modeChips = Object.entries(trainingModes).map(([key, label]) => `<button class="tr-chip tr-mode-chip ${trainingState.settings.modes.includes(key) ? 'active' : ''}" data-mode="${key}">${label}</button>`).join('');
+                const renderModeChips = (modes) => modes.map(key => `<button class="tr-chip tr-mode-chip ${trainingState.settings.modes.includes(key) ? 'active' : ''}" data-mode="${key}">${trainingModes[key]}</button>`).join('');
                 const tagChips = allTags.length ? allTags.map(t => `<button class="tr-chip tr-tag-chip ${trainingState.settings.tags.includes(t) ? 'active' : ''}" data-tag="${sanitizeHTML(t)}">${sanitizeHTML(t)}</button>`).join('') : '<span style="color:var(--muted);font-size:13px">タグ未登録</span>';
                 c.innerHTML = `${renderHistoryStats()}<div class="training-card"><h2>句法トレーニング（4択）</h2>
-                    <div class="tr-section"><div class="tr-label">出題モード（複数選択可）</div><div class="tr-chips">${modeChips}</div></div>
+                    <div class="tr-section"><div class="tr-label">出題モード（複数選択可）</div><div class="tr-mode-group"><div class="tr-mode-group-label">句法</div><div class="tr-chips">${renderModeChips(kuhouTrainingModes)}</div></div><div class="tr-mode-group"><div class="tr-mode-group-label">例文</div><div class="tr-chips">${renderModeChips(exampleTrainingModes)}</div></div></div>
                     <div class="tr-section"><div class="tr-label">タグで絞り込み（AND、任意）</div><div class="tr-chips">${tagChips}</div></div>
                     <div class="tr-section"><div class="tr-label">出題範囲</div><div class="tr-chips"><button class="tr-chip" id="tr-checked-only-chip" style="${trainingState.settings.checkedOnly ? 'background:#f5b301;color:#fff;border-color:#f5b301' : ''}">★ チェック済みのみ</button></div></div>
                     <div class="tr-section"><div class="tr-label">問題数</div><input type="number" class="tr-count-input" id="tr-count" min="1" max="50" value="${trainingState.settings.count}"></div>
@@ -56,12 +73,8 @@
                 const progress = ((trainingState.idx) / trainingState.questions.length) * 100;
                 const questionLabel = trainingModes[q.mode];
                 const choicesHTML = q.choices.map(ch => `<button class="tr-choice" data-choice="${sanitizeHTML(ch)}" ${trainingState.answered ? 'disabled' : ''}>${sanitizeHTML(ch)}</button>`).join('');
-                let explainHTML = '';
-                if (trainingState.answered) {
-                    const sg = q.subgroup;
-                    explainHTML = `<div class="tr-explanation"><strong>${sanitizeHTML(q.group.groupTitle)} — ${sanitizeHTML(sg.subgroupTitle)}</strong>${sg.reading ? '読み: ' + sanitizeHTML(sg.reading) + '<br>' : ''}${sg.meaning ? '訳: ' + sanitizeHTML(sg.meaning) + '<br>' : ''}${sg.explanation ? sanitizeHTML(sg.explanation) : ''}</div><button class="btn tr-next-btn" id="tr-next-btn">${trainingState.idx + 1 >= trainingState.questions.length ? '結果を見る' : '次の問題 →'}</button>`;
-                }
-                const currentEx = q.exIdx >= 0 ? q.subgroup.examples[q.exIdx] : null;
+                const currentEx = q.questionType === 'example' ? (q.example || q.subgroup.examples?.[q.exIdx]) : null;
+                const explainHTML = trainingState.answered ? `${q.questionType === 'example' ? renderExampleExplanation(q) : `<div class="tr-explanation">${renderKuhouExplanation(q.group, q.subgroup)}</div>`}<button class="btn tr-next-btn" id="tr-next-btn">${trainingState.idx + 1 >= trainingState.questions.length ? '結果を見る' : '次の問題 →'}</button>` : '';
                 const checkRow = `<div class="tr-check-row"><button class="tr-check-toggle tr-sg-check ${q.subgroup.checked ? 'checked' : ''}">${q.subgroup.checked ? '★' : '☆'} 句法「${sanitizeHTML(q.subgroup.subgroupTitle)}」</button>${currentEx ? `<button class="tr-check-toggle tr-ex-check ${currentEx.checked ? 'checked' : ''}">${currentEx.checked ? '★' : '☆'} この例文</button>` : ''}</div>`;
                 c.innerHTML = `<div class="training-card"><div class="tr-progress"><div style="width:${progress}%"></div></div><div class="tr-question-meta"><span>${trainingState.idx + 1} / ${trainingState.questions.length}</span><span>正解: ${trainingState.correct}</span></div>${checkRow}<div class="tr-question">${sanitizeHTML(questionLabel)}</div><div class="tr-question-body">${sanitizeHTML(q.prompt)}</div><div class="tr-choices">${choicesHTML}</div>${explainHTML}</div>`;
                 if (trainingState.answered) {

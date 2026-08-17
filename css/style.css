@@ -72,6 +72,8 @@
         .tr-section { margin-bottom: 14px; }
         .tr-section .tr-label { font-size: 12px; color: var(--muted); font-weight: 700; letter-spacing: .06em; margin-bottom: 8px; }
         .tr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tr-mode-group { margin-top: 8px; }
+        .tr-mode-group-label, .tr-used-kuhou-title { font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .06em; margin-bottom: 5px; }
         .tr-chip { padding: 8px 14px; border-radius: 20px; border: 1px solid var(--line); background: #fff; color: var(--muted); font-size: 13px; font-weight: 600; cursor: pointer; min-height: 36px; }
         .tr-chip.active { background: var(--secondary-color); color: #fff; border-color: var(--secondary-color); }
         .tr-count-input { width: 80px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
@@ -89,6 +91,10 @@
         .tr-choice:disabled { cursor: default; }
         .tr-explanation { margin-top: 14px; padding: 12px; background: #f7f4ec; border-radius: 8px; font-size: 14px; line-height: 1.6; }
         .tr-explanation strong { color: var(--primary-color); display: block; margin-bottom: 4px; font-size: 12px; letter-spacing: .06em; }
+        .tr-example-field { margin-bottom: 8px; }
+        .tr-example-field > span { display: block; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+        .tr-used-kuhou-section { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+        .tr-used-kuhou { margin-top: 8px; }
         .tr-next-btn { margin-top: 14px; width: 100%; padding: 14px; background: var(--secondary-color); font-size: 15px; }
         .tr-result-score { font-size: 42px; font-weight: 700; text-align: center; color: var(--secondary-color); margin: 20px 0 8px; }
         .tr-result-label { text-align: center; color: var(--muted); margin-bottom: 20px; }
@@ -152,6 +158,11 @@
         .modal-content form{display:flex;flex-direction:column;gap:15px}
         .modal-content label{font-weight:700;font-size:14px;color:var(--primary-color);margin-bottom:-10px}
         .modal-content fieldset { border: 1px solid #ccc; border-radius: 8px; padding: 10px 15px; margin-top: 10px; }
+        .used-kuhou-selector { margin-top: 10px; }
+        .used-kuhou-selector summary { cursor: pointer; color: var(--secondary-color); font-size: 12px; font-weight: 700; }
+        .used-kuhou-note { margin: 6px 0; color: var(--muted); font-size: 11px; }
+        .used-kuhou-options { display: flex; flex-wrap: wrap; gap: 5px; }
+        .used-kuhou-options label { margin: 0 !important; padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color: var(--text-color) !important; font-size: 11px !important; font-weight: 400 !important; }
         .modal-content legend { font-weight: bold; padding: 0 5px; }
         .modal-content input[type=text],.modal-content textarea{width:100%;padding:10px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box}
         .modal-content textarea{min-height:80px;resize:vertical}
