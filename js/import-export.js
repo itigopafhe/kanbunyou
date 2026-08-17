@@ -24,12 +24,68 @@
         ];
         const kuhouPresets = { '基本句法パック（否定・疑問・使役・受身・比較）': goku_preset_kuhou };
 
+        const exampleAdditionalKuhouColumn = "例文_追加使用句法";
+        const makeKuhouReferenceKey = (groupTitle, subgroupTitle) => JSON.stringify([String(groupTitle ?? ""), String(subgroupTitle ?? "")]);
+        const getExampleAdditionalKuhouReferences = (example, ownerSubgroup) => {
+            const referencesById = new Map();
+            kuhouData.forEach(group => (group.subgroups || []).forEach(subgroup => {
+                referencesById.set(String(subgroup.subgroupId), [group.groupTitle, subgroup.subgroupTitle]);
+            }));
+            const ownerId = String(ownerSubgroup.subgroupId);
+            const seen = new Set();
+            return (Array.isArray(example.usedKuhouIds) ? example.usedKuhouIds : []).reduce((references, id) => {
+                if (String(id) === ownerId) return references;
+                const reference = referencesById.get(String(id));
+                if (!reference) return references;
+                const key = makeKuhouReferenceKey(reference[0], reference[1]);
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    references.push(reference);
+                }
+                return references;
+            }, []);
+        };
+        const parseExampleAdditionalKuhouReferences = (value) => {
+            if (!value) return [];
+            let parsed = value;
+            if (typeof value === "string") {
+                try { parsed = JSON.parse(value); } catch { return []; }
+            }
+            if (!Array.isArray(parsed)) return [];
+            return parsed.reduce((references, reference) => {
+                if (!Array.isArray(reference) || reference.length !== 2) return references;
+                const [groupTitle, subgroupTitle] = reference;
+                if (typeof groupTitle !== "string" || typeof subgroupTitle !== "string") return references;
+                references.push([groupTitle, subgroupTitle]);
+                return references;
+            }, []);
+        };
+        const resolveImportedExampleAdditionalKuhou = () => {
+            const subgroupsByReference = new Map();
+            kuhouData.forEach(group => (group.subgroups || []).forEach(subgroup => {
+                const key = makeKuhouReferenceKey(group.groupTitle, subgroup.subgroupTitle);
+                subgroupsByReference.set(key, subgroupsByReference.has(key) ? null : subgroup);
+            }));
+            kuhouData.forEach(group => (group.subgroups || []).forEach(subgroup => (subgroup.examples || []).forEach(example => {
+                if (!Array.isArray(example._additionalKuhouReferences)) return;
+                const usedKuhouIds = [];
+                const seen = new Set();
+                example._additionalKuhouReferences.forEach(([groupTitle, subgroupTitle]) => {
+                    const target = subgroupsByReference.get(makeKuhouReferenceKey(groupTitle, subgroupTitle));
+                    if (!target || seen.has(String(target.subgroupId))) return;
+                    seen.add(String(target.subgroupId));
+                    usedKuhouIds.push(target.subgroupId);
+                });
+                if (usedKuhouIds.length > 0) example.usedKuhouIds = usedKuhouIds;
+                delete example._additionalKuhouReferences;
+            })));
+        };
         const downloadTemplate = (type) => { let data, fileName; if (type === 'kuhou') { data = [
-            {"グループ名":"否定形","句法名":"不","読み":"〜せず","訳":"〜しない","タグ":"基本,否定","解説":"単純な打ち消し。動詞・形容詞を打ち消す。","メモ":"","例文_白文":"学而不思則罔","例文_書き下し":"学びて思はざれば則ち罔し","例文_日本語訳":"学んでも考えなければ身につかない","例文_出典":"論語"},
-            {"グループ名":"否定形","句法名":"不","読み":"","訳":"","タグ":"","解説":"","メモ":"","例文_白文":"過而不改","例文_書き下し":"過ちて改めず","例文_日本語訳":"過ちを犯しても改めない","例文_出典":"論語"}
+            {"グループ名":"否定形","句法名":"不","読み":"〜せず","訳":"〜しない","タグ":"基本,否定","解説":"単純な打ち消し。動詞・形容詞を打ち消す。","メモ":"","例文_白文":"学而不思則罔","例文_書き下し":"学びて思はざれば則ち罔し","例文_日本語訳":"学んでも考えなければ身につかない","例文_出典":"論語","例文_追加使用句法":""},
+            {"グループ名":"否定形","句法名":"不","読み":"","訳":"","タグ":"","解説":"","メモ":"","例文_白文":"過而不改","例文_書き下し":"過ちて改めず","例文_日本語訳":"過ちを犯しても改めない","例文_出典":"論語","例文_追加使用句法":""}
         ]; fileName = "句法テンプレート.xlsx"; } else { data = [{"語句":"則","異体字・類義字":"即,乃,便","読み":"すなはち","品詞":"接続詞","意味":"【則】〜の場合は\n【即】すぐに","タグ":"重要語","共通メモ":"文脈で判断","写真URL":"","例文_白文":"","例文_書き下し":"","例文_現代語訳":""}]; fileName = "語句テンプレート.xlsx"; } XLSX.writeFile(XLSX.utils.book_new_append_json(data, type === 'kuhou' ? '句法一覧' : '語句帳'), fileName); };
-        const exportData = (type) => { let data; if (type === 'kuhou') { data = kuhouData.flatMap(g => g.subgroups.flatMap(sg => { const base = { "グループ名": g.groupTitle, "句法名": sg.subgroupTitle, "読み": sg.reading || "", "訳": sg.meaning || "", "タグ": (sg.tags||[]).join(','), "解説": sg.explanation || "", "メモ": sg.memo || "" }; const exs = sg.examples || []; const emptyMeta = { "グループ名": g.groupTitle, "句法名": sg.subgroupTitle, "読み":"", "訳":"", "タグ":"", "解説":"", "メモ":"" }; if (exs.length === 0) return [{ ...base, "例文_白文": "", "例文_書き下し": "", "例文_日本語訳": "", "例文_出典": "" }]; return exs.map((ex, i) => ({ ...(i === 0 ? base : emptyMeta), "例文_白文": ex.hakubun||"", "例文_書き下し": ex.kakikudashi||"", "例文_日本語訳": ex.translation||"", "例文_出典": ex.source||"" })); })); } else { data = gokuData.flatMap(item => (item.entries||[]).map(entry => ({ "語句": item.title, "異体字・類義字": (item.variants||[]).join(','), "読み": entry.reading, "品詞": entry.partOfSpeech, "意味": (entry.meanings||[]).join('\n'), "タグ": (item.tags||[]).join(','), "共通メモ": item.commonMemo, "写真URL": item.photo, "例文_白文": entry.example?.hakubun, "例文_書き下し": entry.example?.kakikudashi, "例文_現代語訳": entry.example?.translation, })) );} if(data.length === 0) { alert("データ無"); return; } XLSX.writeFile(XLSX.utils.book_new_append_json(data, type === 'kuhou' ? "句法一覧" : "語句帳"), type === 'kuhou' ? "句法データ.xlsx" : "語句データ.xlsx"); };
-        const handleKuhouImport = (json, mode) => { const groupMap = new Map(); json.forEach(row => { const groupTitle = row["グループ名"] || "名称未設定"; if (!groupMap.has(groupTitle)) { groupMap.set(groupTitle, { groupId: Date.now() + Math.random(), groupTitle: groupTitle, subgroups: new Map() }); } const group = groupMap.get(groupTitle); const sgTitle = row["句法名"] || "名称未設定"; if (!group.subgroups.has(sgTitle)) { group.subgroups.set(sgTitle, { subgroupId: Date.now() + Math.random(), subgroupTitle: sgTitle, reading: "", meaning: "", explanation: "", memo: "", tags: [], examples: [] }); } const sg = group.subgroups.get(sgTitle); if (row["読み"] && !sg.reading) sg.reading = row["読み"]; if ((row["訳"] || row["現代語訳"]) && !sg.meaning) sg.meaning = row["訳"] || row["現代語訳"]; if (row["解説"] && !sg.explanation) sg.explanation = row["解説"]; if (row["メモ"] && !sg.memo) sg.memo = row["メモ"]; if (row["タグ"] && sg.tags.length === 0) sg.tags = row["タグ"].split(',').map(t=>t.trim()).filter(Boolean); const ex = { hakubun: row["例文_白文"]||row["白文"]||"", kakikudashi: row["例文_書き下し"]||row["書き下し文"]||"", translation: row["例文_日本語訳"]||row["例文_現代語訳"]||"", source: row["例文_出典"]||"" }; if (ex.hakubun || ex.kakikudashi || ex.translation || ex.source) sg.examples.push(ex); }); const newKuhouData = [...groupMap.values()].map(g => ({ groupId: g.groupId, groupTitle: g.groupTitle, subgroups: [...g.subgroups.values()] })); if (mode === 'overwrite') { kuhouData = newKuhouData; } else { newKuhouData.forEach(newGroup => { const existingGroup = kuhouData.find(g => g.groupTitle === newGroup.groupTitle); if (existingGroup) { newGroup.subgroups.forEach(newSg => { const existSg = existingGroup.subgroups.find(s => s.subgroupTitle === newSg.subgroupTitle); if (existSg) { existSg.examples = [...(existSg.examples||[]), ...(newSg.examples||[])]; if (!existSg.reading && newSg.reading) existSg.reading = newSg.reading; if (!existSg.meaning && newSg.meaning) existSg.meaning = newSg.meaning; } else { existingGroup.subgroups.push(newSg); } }); } else { kuhouData.push(newGroup); } }); } };
+        const exportData = (type) => { let data; if (type === 'kuhou') { data = kuhouData.flatMap(g => g.subgroups.flatMap(sg => { const base = { "グループ名": g.groupTitle, "句法名": sg.subgroupTitle, "読み": sg.reading || "", "訳": sg.meaning || "", "タグ": (sg.tags||[]).join(','), "解説": sg.explanation || "", "メモ": sg.memo || "" }; const exs = sg.examples || []; const emptyMeta = { "グループ名": g.groupTitle, "句法名": sg.subgroupTitle, "読み":"", "訳":"", "タグ":"", "解説":"", "メモ":"" }; if (exs.length === 0) return [{ ...base, "例文_白文": "", "例文_書き下し": "", "例文_日本語訳": "", "例文_出典": "", [exampleAdditionalKuhouColumn]: "" }]; return exs.map((ex, i) => ({ ...(i === 0 ? base : emptyMeta), "例文_白文": ex.hakubun||"", "例文_書き下し": ex.kakikudashi||"", "例文_日本語訳": ex.translation||"", "例文_出典": ex.source||"", [exampleAdditionalKuhouColumn]: JSON.stringify(getExampleAdditionalKuhouReferences(ex, sg)) })); })); } else { data = gokuData.flatMap(item => (item.entries||[]).map(entry => ({ "語句": item.title, "異体字・類義字": (item.variants||[]).join(','), "読み": entry.reading, "品詞": entry.partOfSpeech, "意味": (entry.meanings||[]).join('\n'), "タグ": (item.tags||[]).join(','), "共通メモ": item.commonMemo, "写真URL": item.photo, "例文_白文": entry.example?.hakubun, "例文_書き下し": entry.example?.kakikudashi, "例文_現代語訳": entry.example?.translation, })) );} if(data.length === 0) { alert("データ無"); return; } XLSX.writeFile(XLSX.utils.book_new_append_json(data, type === 'kuhou' ? "句法一覧" : "語句帳"), type === 'kuhou' ? "句法データ.xlsx" : "語句データ.xlsx"); };
+        const handleKuhouImport = (json, mode) => { const groupMap = new Map(); json.forEach(row => { const groupTitle = row["グループ名"] || "名称未設定"; if (!groupMap.has(groupTitle)) { groupMap.set(groupTitle, { groupId: Date.now() + Math.random(), groupTitle: groupTitle, subgroups: new Map() }); } const group = groupMap.get(groupTitle); const sgTitle = row["句法名"] || "名称未設定"; if (!group.subgroups.has(sgTitle)) { group.subgroups.set(sgTitle, { subgroupId: Date.now() + Math.random(), subgroupTitle: sgTitle, reading: "", meaning: "", explanation: "", memo: "", tags: [], examples: [] }); } const sg = group.subgroups.get(sgTitle); if (row["読み"] && !sg.reading) sg.reading = row["読み"]; if ((row["訳"] || row["現代語訳"]) && !sg.meaning) sg.meaning = row["訳"] || row["現代語訳"]; if (row["解説"] && !sg.explanation) sg.explanation = row["解説"]; if (row["メモ"] && !sg.memo) sg.memo = row["メモ"]; if (row["タグ"] && sg.tags.length === 0) sg.tags = row["タグ"].split(',').map(t=>t.trim()).filter(Boolean); const ex = { hakubun: row["例文_白文"]||row["白文"]||"", kakikudashi: row["例文_書き下し"]||row["書き下し文"]||"", translation: row["例文_日本語訳"]||row["例文_現代語訳"]||"", source: row["例文_出典"]||"" }; if (Object.prototype.hasOwnProperty.call(row, exampleAdditionalKuhouColumn)) ex._additionalKuhouReferences = parseExampleAdditionalKuhouReferences(row[exampleAdditionalKuhouColumn]); if (ex.hakubun || ex.kakikudashi || ex.translation || ex.source) sg.examples.push(ex); }); const newKuhouData = [...groupMap.values()].map(g => ({ groupId: g.groupId, groupTitle: g.groupTitle, subgroups: [...g.subgroups.values()] })); if (mode === 'overwrite') { kuhouData = newKuhouData; } else { newKuhouData.forEach(newGroup => { const existingGroup = kuhouData.find(g => g.groupTitle === newGroup.groupTitle); if (existingGroup) { newGroup.subgroups.forEach(newSg => { const existSg = existingGroup.subgroups.find(s => s.subgroupTitle === newSg.subgroupTitle); if (existSg) { existSg.examples = [...(existSg.examples||[]), ...(newSg.examples||[])]; if (!existSg.reading && newSg.reading) existSg.reading = newSg.reading; if (!existSg.meaning && newSg.meaning) existSg.meaning = newSg.meaning; } else { existingGroup.subgroups.push(newSg); } }); } else { kuhouData.push(newGroup); } }); } resolveImportedExampleAdditionalKuhou(); };
         const handleGokuImport = (json, mode) => { const gokuMap = new Map(); json.forEach(row => { const title = row["語句"] || "名称未設定"; if (!gokuMap.has(title)) { gokuMap.set(title, { id: Date.now() + Math.random(), title: title, variants: (row["異体字・類義字"] || "").split(',').map(t=>t.trim()).filter(Boolean), entries: [], tags: (row["タグ"] || "").split(',').map(t=>t.trim()).filter(Boolean), commonMemo: row["共通メモ"] || "", photo: row["写真URL"] || "" }); } const item = gokuMap.get(title); if(row["読み"] || row["意味"]){ item.entries.push({ reading: row["読み"] || "", partOfSpeech: row["品詞"] || "", meanings: (row["意味"] || "").split('\n').filter(Boolean), example: { hakubun: row["例文_白文"], kakikudashi: row["例文_書き下し"], translation: row["例文_現代語訳"] } }); } }); const newGokuData = [...gokuMap.values()]; if (mode === 'overwrite') { gokuData = newGokuData; } else { newGokuData.forEach(newItem => { const existingItem = gokuData.find(g => g.title === newItem.title); if (existingItem) { existingItem.entries.push(...newItem.entries); if(newItem.variants.length > 0) existingItem.variants = [...new Set([...(existingItem.variants || []), ...newItem.variants])]; if(newItem.tags.length > 0) existingItem.tags = [...new Set([...(existingItem.tags || []), ...newItem.tags])]; } else { gokuData.push(newItem); } }); } };
         const handleFileImport = (e) => { const file = e.target.files[0]; if (!file || !currentImportHandler) return; const importMode = confirm("データをインポートします。「OK」で上書き、「キャンセル」で追加します。"); const reader = new FileReader(); reader.onload = (event) => { try { const data = new Uint8Array(event.target.result); const workbook = XLSX.read(data, {type: 'array'}); const sheetName = workbook.SheetNames[0]; const json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]); if (json.length === 0) { alert("データ無"); return; } currentImportHandler(json, importMode ? 'overwrite' : 'append'); saveAndRender(); alert("完了"); } catch (error) { console.error("インポートエラー:", error); alert("失敗"); } finally { importFileInput.value = ''; currentImportHandler = null; } }; reader.readAsArrayBuffer(file); };
         const createShareLink = () => { if (gokuData.length === 0) { alert("共有データ無"); return; } const dataToShare = { goku: gokuData }; const jsonString = JSON.stringify(dataToShare); const compressedString = LZString.compressToEncodedURIComponent(jsonString); const url = `${location.protocol}//${location.host}${location.pathname}#data=${compressedString}`; navigator.clipboard.writeText(url).then(() => alert("リンクをコピーしました"), () => alert("コピー失敗")); };
